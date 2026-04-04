@@ -36,7 +36,7 @@ def create_database_directory(base_folder: str | Path, new_folder_name: str) -> 
         raise ValidationError("Informe um nome para a nova pasta.")
 
     new_folder = Path(normalized_name)
-    if new_folder.is_absolute():
+    if new_folder.is_absolute() or any(part in {".", ".."} for part in new_folder.parts):
         raise ValidationError("Informe apenas o nome da pasta a ser criada.")
 
     target_folder = Path(base_folder).expanduser() / new_folder

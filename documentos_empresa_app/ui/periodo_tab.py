@@ -110,7 +110,7 @@ class PeriodoTab(ttk.Frame):
         )
         self.report_start_month_combo.grid(row=3, column=1, sticky="w", padx=(0, 10))
 
-        ttk.Label(report_box, text="Mes final").grid(row=2, column=2, sticky="w")
+        ttk.Label(report_box, text="Mes final (opcional)").grid(row=2, column=2, sticky="w")
         self.report_end_month_combo = ttk.Combobox(
             report_box,
             textvariable=self.report_end_month_var,
@@ -119,7 +119,7 @@ class PeriodoTab(ttk.Frame):
         )
         self.report_end_month_combo.grid(row=3, column=2, sticky="w", padx=(0, 10))
 
-        ttk.Label(report_box, text="Ano final").grid(row=2, column=3, sticky="w")
+        ttk.Label(report_box, text="Ano final (opcional)").grid(row=2, column=3, sticky="w")
         self.report_end_year_combo = ttk.Combobox(
             report_box,
             textvariable=self.report_end_year_var,
@@ -302,6 +302,8 @@ class PeriodoTab(ttk.Frame):
     def _parse_report_period_ids(self) -> tuple[int, int] | None:
         start_year = self.report_start_year_var.get().strip()
         end_year = self.report_end_year_var.get().strip()
+        start_month = self.report_start_month_var.get().strip()
+        end_month = self.report_end_month_var.get().strip()
 
         if start_year and not end_year:
             end_year = start_year
@@ -315,14 +317,26 @@ class PeriodoTab(ttk.Frame):
         if not start_year or not end_year:
             messagebox.showwarning("Relatorio", "Selecione pelo menos um ano para o relatorio.", parent=self)
             return None
-        if not self.report_start_month_var.get() or not self.report_end_month_var.get():
-            messagebox.showwarning("Relatorio", "Selecione os meses inicial e final.", parent=self)
+
+        if start_month and not end_month:
+            end_month = start_month
+            self.report_end_month_var.set(end_month)
+        elif end_month and not start_month:
+            start_month = end_month
+            self.report_start_month_var.set(start_month)
+
+        if not start_month or not end_month:
+            messagebox.showwarning(
+                "Relatorio",
+                "Selecione pelo menos um mes para o relatorio. O mes final e opcional.",
+                parent=self,
+            )
             return None
 
         start_year_int = int(start_year)
         end_year_int = int(end_year)
-        start_month_int = int(self.report_start_month_var.get().split(" - ", 1)[0])
-        end_month_int = int(self.report_end_month_var.get().split(" - ", 1)[0])
+        start_month_int = int(start_month.split(" - ", 1)[0])
+        end_month_int = int(end_month.split(" - ", 1)[0])
 
         start_period_id = self.period_map_by_year_month.get((start_year_int, start_month_int))
         end_period_id = self.period_map_by_year_month.get((end_year_int, end_month_int))

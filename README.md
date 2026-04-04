@@ -8,145 +8,262 @@ Sistema desktop local para controle de recebimento de documentos empresariais.
 
 Versao atual: `1.2.0`
 
-O G-docs foi desenhado para substituir planilhas e controles manuais por um fluxo local, rastreavel e simples de operar. O foco do projeto continua sendo clareza operacional: cadastrar empresas, organizar documentos, controlar recebimentos por periodo e manter historico auditavel sem depender de servidor.
+O projeto foi pensado para substituir planilhas e controles manuais por um fluxo local, auditavel e simples de operar. O foco e manter o uso direto no escritorio: cadastro de empresas, documentos por tipo, controle mensal de recebimento, relatorio de pendencias e backup do banco sem depender de servidor.
 
-## Objetivo
+## Visao geral
 
-Centralizar o acompanhamento de documentos por empresa, documento e periodo, permitindo saber com clareza:
+O G-docs permite:
 
-- quais documentos precisam ser cobrados
-- por qual meio cada documento costuma ser recebido
-- quais itens estao pendentes, recebidos ou encerrados
-- quais tipos seguem regra mensal, trimestral ou anual em janeiro
-- quem realizou alteracoes relevantes no sistema
+- cadastrar e manter empresas
+- cadastrar documentos por empresa e por tipo
+- vincular meios de recebimento por documento
+- controlar status por periodo
+- aplicar regras de ocorrencia mensal, trimestral e anual em janeiro
+- exportar pendencias em Excel
+- manter logs administrativos
+- gerar backup e restaurar o banco pela interface
 
-## Principais caracteristicas
+## Principais recursos
 
-- aplicacao desktop local em Python, Tkinter e SQLite
-- banco separado da pasta instalada do programa
+- aplicacao desktop em Python, Tkinter e SQLite
+- banco local separado da pasta instalada do programa
 - autenticacao com perfis `admin` e `comum`
-- logs administrativos de alteracoes relevantes
-- observacao livre por empresa com ate 255 caracteres
-- meios de recebimento vinculados a cada documento
-- tipos com ocorrencia configuravel:
-  - `Mensal`
-  - `Trimestral`
-  - `Anual em janeiro`
+- login lembrado por perfil do computador, com expiracao de `60` dias e rotacao do token
+- logs de alteracoes relevantes
+- observacao por empresa com ate `255` caracteres
 - status automatico `Nao cobrar` para meses fora da ocorrencia do tipo
 - regra de encerramento que bloqueia meses posteriores
-- importacao Excel com layouts atualizados e compatibilidade legada
-- relatorio de pendencias em Excel
-- backup e restauracao do banco pela interface
-- vinculo opcional de pasta local por empresa
+- importacao e exportacao em Excel
+- build com `PyInstaller`
+- instalador Windows com `Inno Setup`
 
-## Novidades da versao `1.2.0`
+## Requisitos
 
-- observacao por empresa validada em servico, banco e interface
-- meios de recebimento migrados de empresa para documento
-- importacao completa atualizada para receber meio de recebimento por documento
-- tipos com ocorrencia especial para documentos trimestrais e anuais
-- grade de controle mostrando `Nao cobrar` automaticamente quando o tipo nao deve ser cobrado naquele mes
-- painel de tipos atualizado para configurar a ocorrencia sem poluir a interface
+### Desenvolvimento e execucao local
 
-## Fluxo principal de uso
+- Python `3.10+`
+- `tkinter` disponivel no ambiente Python
+- dependencias do `requirements.txt`
 
-1. Fazer login.
-2. Cadastrar empresas manualmente ou importar por Excel.
-3. Cadastrar documentos por empresa, definindo tipo e meios de recebimento.
-4. Ajustar a ocorrencia do tipo quando necessario.
-5. Gerar os periodos anuais de controle.
-6. Consultar a empresa na aba `Controle`.
-7. Atualizar os status permitidos para cada mes.
-8. Exportar pendencias, consultar logs ou gerar backup quando necessario.
+### Dependencias Python
 
-## Regras importantes
+- `openpyxl`
+- `Pillow`
+- `PyInstaller`
 
-- empresa e unica por `codigo_empresa`
-- documento e unico por `(empresa, tipo, nome_documento)`
-- observacao de empresa aceita no maximo 255 caracteres
-- meios de recebimento pertencem ao documento, nao mais a empresa
-- tipo `Trimestral` libera apenas `01`, `04`, `07` e `10`
-- tipo `Anual em janeiro` libera apenas `01`
-- meses fora da ocorrencia aparecem como `Nao cobrar` e nao recebem edicao manual
-- `Encerrado` continua removendo a exibicao/editabilidade dos meses posteriores
-- consultas e relatorios aceitam no maximo 12 meses por vez
+### Dependencias opcionais por ambiente
 
-## Layouts de importacao
+- `python3-tk` em distribuicoes Linux que nao trazem `tkinter` por padrao
+- `python3-gi` ou `xrandr` para melhorar deteccao de tela no Linux
+- `cairosvg` para renderizar `icon.svg` diretamente ao gerar os icones
+- `Inno Setup` para gerar o instalador Windows
 
-### Empresas
+## Instalacao do ambiente
 
-- `codigo_empresa`
-- `nome_empresa`
-- `email_contato`
-- `nome_contato`
-- `observacao`
+### Linux / macOS
 
-Compatibilidade mantida com o layout legado de 2 colunas.
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
 
-### Documentos
+### Windows PowerShell
 
-- `meios_recebimento`
-- `nome_documento`
-- `nome_tipo`
-
-Compatibilidade mantida com o layout legado de 2 colunas (`nome_documento`, `nome_tipo`).
-
-### Cadastro completo
-
-- `codigo_empresa`
-- `nome_empresa`
-- `email_contato`
-- `nome_contato`
-- `meios_recebimento`
-- `nome_documento`
-- `nome_tipo`
-- `observacao`
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
 
 ## Execucao local
 
-Na raiz do projeto:
+### Linux / macOS
+
+```bash
+.venv/bin/python main.py
+```
+
+### Windows PowerShell
 
 ```powershell
 .\.venv\Scripts\python.exe main.py
 ```
 
-Para executar a suite principal de servicos:
+## Primeiro acesso
 
-```powershell
-.\.venv\Scripts\python.exe -W default -m unittest tests.test_services
+Em um banco novo, o sistema cria automaticamente um usuario inicial:
+
+- usuario: `admin`
+- senha: `admin`
+
+Recomendacao importante:
+
+- altere essa senha imediatamente apos o primeiro login
+
+## Testes
+
+### Suite principal
+
+```bash
+python -m unittest tests.test_services tests.test_storage tests.test_resources tests.test_display
 ```
 
-## Tecnologias utilizadas
+### Apenas servicos
 
-- Python
-- Tkinter
-- SQLite
-- openpyxl
-- PyInstaller
+```bash
+python -m unittest tests.test_services
+```
 
-## Estrutura da documentacao
+## Empacotamento
 
-Este `README` cobre a visao atual do produto. A documentacao tecnica detalhada continua na pasta [`docs/`](docs).
+Os builds devem ser gerados no proprio sistema operacional de destino.
 
-### Documentacao tecnica
+### Linux
 
-- [1. Visao Geral Do Sistema](docs/01-visao-geral-do-sistema.md)
-- [2. Estrutura De Pastas E Arquivos](docs/02-estrutura-de-pastas-e-arquivos.md)
-- [3. Arquitetura Geral Do Projeto](docs/03-arquitetura-geral-do-projeto.md)
-- [4. Hierarquia Das Classes](docs/04-hierarquia-das-classes.md)
-- [5. Documentacao Completa Das Classes](docs/05-documentacao-completa-das-classes.md)
-- [6. Documentacao Completa Das Funcoes E Metodos](docs/06-documentacao-completa-das-funcoes-e-metodos.md)
-- [7. Relacionamento Entre Classes](docs/07-relacionamento-entre-classes.md)
-- [8. Mapa De Chamadas Entre Classes E Modulos](docs/08-mapa-de-chamadas-entre-classes-e-modulos.md)
-- [9. Fluxos Importantes Do Sistema](docs/09-fluxos-importantes-do-sistema.md)
-- [10. Banco De Dados](docs/10-banco-de-dados.md)
-- [11. Regras De Negocio](docs/11-regras-de-negocio.md)
-- [12. Interface Do Sistema](docs/12-interface-do-sistema.md)
-- [13. Dependencias E Bibliotecas Usadas](docs/13-dependencias-e-bibliotecas-usadas.md)
-- [14. UML Textual / Diagrama Descritivo](docs/14-uml-textual-diagrama-descritivo.md)
-- [15. Ordem Ideal Para Estudar O Projeto](docs/15-ordem-ideal-para-estudar-o-projeto.md)
-- [16. Pontos De Melhoria E Refatoracao](docs/16-pontos-de-melhoria-e-refatoracao.md)
-- [17. Resumo Final](docs/17-resumo-final.md)
-- [18. Icones E Empacotamento Por Sistema Operacional](docs/18-icones-e-empacotamento-por-sistema-operacional.md)
-- [19. Observacoes Importantes Para Git E Empacotamento](docs/19-observacoes-importantes-para-git-e-empacotamento.md)
-- [20. Encerramento](docs/20-encerramento.md)
+```bash
+bash scripts/build_release.sh
+```
+
+Saidas esperadas:
+
+- build PyInstaller: `dist/G-docs/`
+- pacote versionado: `dist_release/G-docs-linux-<arquitetura>-v<versao>.tar.gz`
+
+### macOS
+
+```bash
+bash scripts/build_release.sh
+```
+
+Saidas esperadas:
+
+- build PyInstaller: `dist/G-docs/`
+- pacote versionado: `dist_release/G-docs-macos-<arquitetura>-v<versao>.tar.gz`
+
+### Windows
+
+```powershell
+scripts\build_release.bat
+```
+
+Saidas esperadas:
+
+- build PyInstaller: `dist\G-docs\`
+- pacote versionado: `dist_release\G-docs-win64-v<versao>.zip`
+- se o `Inno Setup` estiver no `PATH`, o script tambem tenta gerar o instalador
+
+### Pular testes no build
+
+Por padrao, os scripts de release executam os testes antes do empacotamento.
+
+#### Linux / macOS
+
+```bash
+RUN_TESTS=0 bash scripts/build_release.sh
+```
+
+#### Windows PowerShell
+
+```powershell
+$env:RUN_TESTS=0
+scripts\build_release.bat
+```
+
+## Estrutura do projeto
+
+```text
+.
+├── main.py
+├── README.md
+├── requirements.txt
+├── documentos_empresa_app.spec
+├── assets/
+├── docs/
+├── installer/
+├── scripts/
+├── tests/
+└── documentos_empresa_app/
+    ├── app_context.py
+    ├── database/
+    ├── models/
+    ├── services/
+    ├── ui/
+    └── utils/
+```
+
+## Pastas principais
+
+- `documentos_empresa_app/`: codigo-fonte da aplicacao
+- `documentos_empresa_app/database/`: conexao, repositorios e schema SQLite
+- `documentos_empresa_app/services/`: regras de negocio
+- `documentos_empresa_app/ui/`: interface Tkinter
+- `documentos_empresa_app/utils/`: constantes, seguranca, recursos e helpers
+- `scripts/`: build e geracao de icones
+- `installer/`: script do Inno Setup para Windows
+- `tests/`: testes automatizados
+- `docs/`: documentacao tecnica detalhada
+
+## Arquivos de release importantes
+
+- `documentos_empresa_app.spec`: receita do `PyInstaller`
+- `scripts/build_release.sh`: build Linux/macOS com pacote `.tar.gz`
+- `scripts/build_release.bat`: build Windows com `.zip` e tentativa opcional de instalador
+- `installer/G-docs.iss`: instalador Windows
+- `scripts/generate_icons.py`: gera `icon.png`, `icon.ico` e `icon.icns`
+
+## Banco e seguranca
+
+- o banco e SQLite local
+- o caminho do banco e salvo no perfil do usuario do computador
+- o login lembrado e local ao perfil do sistema operacional
+- a credencial lembrada expira em `60` dias sem uso
+- o token lembrado e renovado automaticamente a cada autenticacao bem-sucedida
+- backups restaurados precisam conter a estrutura esperada do sistema
+
+## Fluxo principal de uso
+
+1. Fazer login.
+2. Cadastrar empresas manualmente ou por importacao.
+3. Cadastrar documentos por empresa.
+4. Definir ou revisar tipos e meios de recebimento.
+5. Gerar os periodos do ano.
+6. Controlar os status na aba `Controle`.
+7. Exportar pendencias ou consultar logs quando necessario.
+8. Gerar backup periodicamente.
+
+## Regras de negocio principais
+
+- empresa e unica por `codigo_empresa`
+- documento e unico por `(empresa, tipo_documento, nome_documento)`
+- consultas e relatorios aceitam no maximo `12` meses por vez
+- tipos podem ser `Mensal`, `Trimestral` ou `Anual em janeiro`
+- meses fora da ocorrencia aparecem como `Nao cobrar`
+- `Encerrado` bloqueia meses posteriores do documento
+
+## Documentacao tecnica
+
+Os documentos detalhados continuam na pasta [`docs/`](docs). Os mais importantes para manutencao e distribuicao sao:
+
+- [Estrutura de pastas e arquivos](docs/02-estrutura-de-pastas-e-arquivos.md)
+- [Banco de dados](docs/10-banco-de-dados.md)
+- [Dependencias e bibliotecas](docs/13-dependencias-e-bibliotecas-usadas.md)
+- [Icones e empacotamento](docs/18-icones-e-empacotamento-por-sistema-operacional.md)
+- [Git e empacotamento](docs/19-observacoes-importantes-para-git-e-empacotamento.md)
+
+## O que nao deve ir para o Git
+
+- bancos locais
+- artefatos de build (`build/`, `dist/`, `dist_release/`, `dist_installer/`)
+- ambientes virtuais
+- caches
+- planilhas exportadas localmente
+
+## Status desta revisao
+
+- build Linux validado localmente
+- scripts de release revisados para Linux/macOS e Windows
+- `.gitignore` ampliado para artefatos de release e arquivos SQLite auxiliares
+- README refeito para uso, manutencao e distribuicao

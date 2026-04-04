@@ -23,8 +23,15 @@ class ControleTab(ttk.Frame):
         self.period_map_by_year_month: dict[tuple[int, int], int] = {}
         self.periods_by_year: dict[int, list[dict]] = {}
         self.current_filters: dict | None = None
+        self.current_view: dict | None = None
         self.collapsed_groups: dict[str, bool] = {}
-        self.status_vars: list[tk.StringVar] = []
+        self.group_widgets: dict[str, dict] = {}
+        self.document_rows: dict[int, dict] = {}
+        self.document_column_width = 320
+        self.document_name_labels: list[tk.Label] = []
+        self.document_header_frame: tk.Frame | None = None
+        self._resize_start_x: int | None = None
+        self._resize_start_width: int | None = None
         self.default_message_text = "Selecione a empresa e o intervalo para consultar."
 
         self.start_year_var = tk.StringVar()
@@ -60,7 +67,7 @@ class ControleTab(ttk.Frame):
         self.start_month_combo = ttk.Combobox(period_frame, textvariable=self.start_month_var, state="readonly", width=20)
         self.start_month_combo.grid(row=1, column=1, sticky="w", padx=(0, 10))
 
-        ttk.Label(period_frame, text="Mes final").grid(row=0, column=2, sticky="w")
+        ttk.Label(period_frame, text="Mes final (opcional)").grid(row=0, column=2, sticky="w")
         self.end_month_combo = ttk.Combobox(period_frame, textvariable=self.end_month_var, state="readonly", width=20)
         self.end_month_combo.grid(row=1, column=2, sticky="w", padx=(0, 10))
 
@@ -69,14 +76,16 @@ class ControleTab(ttk.Frame):
         self.end_year_combo.grid(row=1, column=3, sticky="w", padx=(0, 10))
         self.end_year_combo.bind("<<ComboboxSelected>>", lambda _event: self._on_year_changed("end"))
 
-        ttk.Button(period_frame, text="Consultar", command=self.consult).grid(row=1, column=4, sticky="w", padx=(0, 8))
-        ttk.Button(period_frame, text="Limpar filtros", command=self.clear_filters).grid(row=1, column=5, sticky="w")
+        action_frame = ttk.Frame(period_frame)
+        action_frame.grid(row=1, column=4, columnspan=3, sticky="w")
+        ttk.Button(action_frame, text="Consultar", command=self.consult).pack(side="left")
+        ttk.Button(action_frame, text="Limpar filtros", command=self.clear_filters).pack(side="left", padx=(6, 0))
         self.directory_button = ttk.Button(
-            period_frame,
+            action_frame,
             text="Abrir pasta...",
             command=self.open_company_directory_browser,
         )
-        self.directory_button.grid(row=1, column=6, sticky="w", padx=(8, 0))
+        self.directory_button.pack(side="left", padx=(6, 0))
         ttk.Label(period_frame, text="Limite maximo de 12 meses por consulta.").grid(
             row=2, column=0, columnspan=7, sticky="w", pady=(8, 0)
         )
@@ -115,6 +124,7 @@ class ControleTab(ttk.Frame):
                     self._set_period_filter_values(start_period_id, end_period_id)
                 except ValidationError:
                     self.current_filters = None
+                    self.current_view = None
                     self._set_default_message("Selecione a empresa e o intervalo para consultar.")
                     self._clear_result_area()
         else:
@@ -238,6 +248,8 @@ class ControleTab(ttk.Frame):
     def _parse_selected_period_ids(self) -> tuple[int, int] | None:
         start_year = self.start_year_var.get().strip()
         end_year = self.end_year_var.get().strip()
+        start_month = self.start_month_var.get().strip()
+        end_month = self.end_month_var.get().strip()
 
         if start_year and not end_year:
             end_year = start_year
@@ -251,14 +263,26 @@ class ControleTab(ttk.Frame):
         if not start_year or not end_year:
             messagebox.showwarning("Controle", "Selecione pelo menos um ano para a consulta.", parent=self)
             return None
-        if not self.start_month_var.get() or not self.end_month_var.get():
-            messagebox.showwarning("Controle", "Selecione os meses inicial e final.", parent=self)
+
+        if start_month and not end_month:
+            end_month = start_month
+            self.end_month_var.set(end_month)
+        elif end_month and not start_month:
+            start_month = end_month
+            self.start_month_var.set(start_month)
+
+        if not start_month or not end_month:
+            messagebox.showwarning(
+                "Controle",
+                "Selecione pelo menos um mes para a consulta. O mes final e opcional.",
+                parent=self,
+            )
             return None
 
         start_year_int = int(start_year)
         end_year_int = int(end_year)
-        start_month_int = int(self.start_month_var.get().split(" - ", 1)[0])
-        end_month_int = int(self.end_month_var.get().split(" - ", 1)[0])
+        start_month_int = int(start_month.split(" - ", 1)[0])
+        end_month_int = int(end_month.split(" - ", 1)[0])
 
         start_period_id = self.period_map_by_year_month.get((start_year_int, start_month_int))
         end_period_id = self.period_map_by_year_month.get((end_year_int, end_month_int))
@@ -273,6 +297,7 @@ class ControleTab(ttk.Frame):
 
     def clear_filters(self) -> None:
         self.current_filters = None
+        self.current_view = None
         self.company_selector.clear_selection()
         self.start_year_var.set("")
         self.start_month_var.set("")
@@ -316,8 +341,12 @@ class ControleTab(ttk.Frame):
         self.render_result(view, scroll_position=scroll_position)
 
     def render_result(self, view: dict, scroll_position: float | None = None) -> None:
+        self.current_view = view
         self._clear_result_area()
-        self.status_vars = []
+        self.document_name_labels = []
+        self.document_header_frame = None
+        self.group_widgets = {}
+        self.document_rows = {}
 
         periodos = view["periodos"]
         groups = view["groups"]
@@ -334,17 +363,34 @@ class ControleTab(ttk.Frame):
         )
 
         header_bg = "#1F4E79"
-        doc_header = tk.Label(
+        header_frame = tk.Frame(
             self.scrollable.inner,
+            bg=header_bg,
+            relief="solid",
+            bd=1,
+            width=self.document_column_width,
+            height=52,
+        )
+        header_frame.grid(row=0, column=0, sticky="nsew")
+        header_frame.grid_propagate(False)
+        doc_header = tk.Label(
+            header_frame,
             text="Documento",
             bg=header_bg,
             fg="white",
-            relief="solid",
-            bd=1,
             padx=8,
             pady=8,
+            anchor="w",
+            justify="left",
         )
-        doc_header.grid(row=0, column=0, sticky="nsew")
+        doc_header.pack(side="left", fill="both", expand=True)
+        resize_handle = tk.Frame(header_frame, bg="#16324E", width=8, cursor="sb_h_double_arrow")
+        resize_handle.pack(side="right", fill="y")
+        resize_handle.bind("<ButtonPress-1>", self._start_document_column_resize)
+        resize_handle.bind("<B1-Motion>", self._resize_document_column)
+        resize_handle.bind("<ButtonRelease-1>", self._finish_document_column_resize)
+        self.document_header_frame = header_frame
+        self.document_name_labels.append(doc_header)
 
         for column_index, periodo in enumerate(periodos, start=1):
             header = tk.Label(
@@ -397,63 +443,101 @@ class ControleTab(ttk.Frame):
                 bg="#DCE6F1",
                 fg="#404040",
             ).pack(side="left")
+            self.group_widgets[tipo_nome] = {
+                "toggle": toggle,
+                "document_ids": [],
+            }
             row_index += 1
 
-            if is_collapsed:
-                continue
-
             for document in group["documentos"]:
-                name_label = tk.Label(
-                    self.scrollable.inner,
-                    text=document["nome_documento"],
-                    anchor="w",
-                    relief="solid",
-                    bd=1,
-                    bg="#FFFFFF",
-                    padx=8,
-                    pady=6,
+                self._create_document_row(
+                    document,
+                    row_index,
+                    periodos,
+                    tipo_nome,
+                    visible=not is_collapsed,
                 )
-                name_label.grid(row=row_index, column=0, sticky="nsew", padx=1, pady=1)
-
-                for column_index, cell in enumerate(document["cells"], start=1):
-                    if cell["available"]:
-                        self._create_status_cell(
-                            row_index,
-                            column_index,
-                            document["id"],
-                            cell["periodo_id"],
-                            document["nome_documento"],
-                            f'{periodos[column_index - 1]["mes"]:02d}/{periodos[column_index - 1]["ano"]}',
-                            cell["status"],
-                            cell.get("updated_by_username"),
-                            cell.get("updated_at"),
-                        )
-                    else:
-                        display_status = cell.get("status") or ""
-                        color = STATUS_COLORS.get(display_status, "#F3F3F3")
-                        inactive = tk.Label(
-                            self.scrollable.inner,
-                            text=display_status,
-                            relief="solid",
-                            bd=1,
-                            bg=color,
-                            padx=8,
-                            pady=10,
-                        )
-                        inactive.grid(row=row_index, column=column_index, sticky="nsew", padx=1, pady=1)
-                        read_only_hint = cell.get("read_only_hint")
-                        if read_only_hint:
-                            inactive.bind(
-                                "<Enter>",
-                                lambda _event, message=read_only_hint: self.message_var.set(message),
-                            )
-                            inactive.bind("<Leave>", self._restore_default_message)
                 row_index += 1
 
+        self._apply_document_column_width()
         for column_index in range(len(periodos) + 1):
-            self.scrollable.inner.grid_columnconfigure(column_index, weight=1 if column_index else 2)
+            if column_index == 0:
+                self.scrollable.inner.grid_columnconfigure(column_index, weight=0, minsize=self.document_column_width)
+                continue
+            self.scrollable.inner.grid_columnconfigure(column_index, weight=1)
 
         self._restore_scroll_position(scroll_position)
+
+    def _create_document_row(
+        self,
+        document: dict,
+        row_index: int,
+        periodos: list[dict],
+        group_name: str,
+        *,
+        visible: bool,
+    ) -> None:
+        row_widgets: list[tk.Widget] = []
+        variables: list[tk.StringVar] = []
+
+        name_label = tk.Label(
+            self.scrollable.inner,
+            text=document["nome_documento"],
+            anchor="w",
+            justify="left",
+            relief="solid",
+            bd=1,
+            bg="#FFFFFF",
+            padx=8,
+            pady=6,
+        )
+        name_label.grid(row=row_index, column=0, sticky="nsew", padx=1, pady=1)
+        self.document_name_labels.append(name_label)
+        row_widgets.append(name_label)
+
+        for column_index, cell in enumerate(document["cells"], start=1):
+            period_label = f'{periodos[column_index - 1]["mes"]:02d}/{periodos[column_index - 1]["ano"]}'
+            if cell["available"]:
+                cell_widget, variable = self._create_status_cell(
+                    row_index,
+                    column_index,
+                    document["id"],
+                    cell["periodo_id"],
+                    document["nome_documento"],
+                    period_label,
+                    cell["status"],
+                    cell.get("updated_by_username"),
+                    cell.get("updated_at"),
+                )
+                variables.append(variable)
+            else:
+                cell_widget = self._create_read_only_cell(
+                    row_index,
+                    column_index,
+                    document["nome_documento"],
+                    period_label,
+                    cell.get("status") or "",
+                    cell.get("read_only_hint"),
+                    cell.get("updated_by_username"),
+                    cell.get("updated_at"),
+                )
+            row_widgets.append(cell_widget)
+
+        self.document_rows[document["id"]] = {
+            "group_name": group_name,
+            "row_index": row_index,
+            "row_widgets": row_widgets,
+            "name_label": name_label,
+            "variables": variables,
+            "document": document,
+        }
+
+        document_ids = self.group_widgets[group_name]["document_ids"]
+        if document["id"] not in document_ids:
+            document_ids.append(document["id"])
+
+        if not visible:
+            self._set_document_row_visible(document["id"], visible=False)
 
     def _create_status_cell(
         self,
@@ -466,13 +550,12 @@ class ControleTab(ttk.Frame):
         current_status: str,
         updated_by_username: str | None,
         updated_at: str | None,
-    ) -> None:
+    ) -> tuple[tk.Frame, tk.StringVar]:
         color = STATUS_COLORS.get(current_status, STATUS_COLORS[""])
         cell_frame = tk.Frame(self.scrollable.inner, bg=color, relief="solid", bd=1)
         cell_frame.grid(row=row_index, column=column_index, sticky="nsew", padx=1, pady=1)
 
         variable = tk.StringVar(value=current_status)
-        self.status_vars.append(variable)
         option = tk.OptionMenu(
             cell_frame,
             variable,
@@ -489,7 +572,65 @@ class ControleTab(ttk.Frame):
         option["menu"].configure(tearoff=0)
         option.pack(fill="both", expand=True)
 
-        for widget in (cell_frame, option):
+        self._bind_status_metadata(
+            (cell_frame, option),
+            document_name,
+            period_label,
+            current_status,
+            updated_by_username,
+            updated_at,
+        )
+        return cell_frame, variable
+
+    def _create_read_only_cell(
+        self,
+        row_index: int,
+        column_index: int,
+        document_name: str,
+        period_label: str,
+        display_status: str,
+        read_only_hint: str | None,
+        updated_by_username: str | None,
+        updated_at: str | None,
+    ) -> tk.Label:
+        color = STATUS_COLORS.get(display_status, "#F3F3F3")
+        inactive = tk.Label(
+            self.scrollable.inner,
+            text=display_status,
+            relief="solid",
+            bd=1,
+            bg=color,
+            padx=8,
+            pady=10,
+        )
+        inactive.grid(row=row_index, column=column_index, sticky="nsew", padx=1, pady=1)
+        if read_only_hint:
+            inactive.bind(
+                "<Enter>",
+                lambda _event, message=read_only_hint: self.message_var.set(message),
+            )
+            inactive.bind("<Leave>", self._restore_default_message)
+        else:
+            self._bind_status_metadata(
+                (inactive,),
+                document_name,
+                period_label,
+                display_status,
+                updated_by_username,
+                updated_at,
+            )
+        return inactive
+
+    def _bind_status_metadata(
+        self,
+        widgets: tuple[tk.Widget, ...],
+        document_name: str,
+        period_label: str,
+        current_status: str,
+        updated_by_username: str | None,
+        updated_at: str | None,
+    ) -> None:
+        for widget in widgets:
             widget.bind(
                 "<Enter>",
                 lambda _event, doc_name=document_name, per_label=period_label, cell_status=current_status,
@@ -504,24 +645,114 @@ class ControleTab(ttk.Frame):
             widget.bind("<Leave>", self._restore_default_message)
 
     def update_status(self, document_id: int, period_id: int, status: str) -> None:
-        scroll_position = self._get_scroll_position()
+        cached_document = self._get_cached_document(document_id)
         try:
             self.services.status_service.update_status(document_id, period_id, status)
         except ValidationError as exc:
-            self.consult(scroll_position=scroll_position)
+            if cached_document is not None:
+                self._replace_document_row(cached_document)
             messagebox.showerror("Controle", str(exc), parent=self)
             return
-        self.on_data_changed()
-        self.consult(scroll_position=scroll_position)
+        self._refresh_document_row_from_service(document_id)
 
     def toggle_group(self, group_name: str) -> None:
+        scroll_position = self._get_scroll_position()
         self.collapsed_groups[group_name] = not self.collapsed_groups.get(group_name, False)
-        if self.current_filters:
-            self.consult(preserve_scroll=True)
+        self._apply_group_visibility(group_name)
+        self._restore_scroll_position(scroll_position)
 
     def _clear_result_area(self) -> None:
+        self.group_widgets = {}
+        self.document_rows = {}
+        self.document_name_labels = []
+        self.document_header_frame = None
         for child in self.scrollable.inner.winfo_children():
             child.destroy()
+
+    def _get_cached_document(self, document_id: int) -> dict | None:
+        if not self.current_view:
+            return None
+
+        for group in self.current_view.get("groups", []):
+            for document in group.get("documentos", []):
+                if document["id"] == document_id:
+                    return document
+        return None
+
+    def _update_cached_document(self, document: dict) -> None:
+        if not self.current_view:
+            return
+
+        for group in self.current_view.get("groups", []):
+            for index, current_document in enumerate(group.get("documentos", [])):
+                if current_document["id"] == document["id"]:
+                    group["documentos"][index] = document
+                    return
+
+    def _refresh_document_row_from_service(self, document_id: int) -> None:
+        if not self.current_filters or not self.current_view:
+            return
+
+        updated_document = self.services.status_service.build_control_document_view(
+            document_id,
+            self.current_filters["start_period_id"],
+            self.current_filters["end_period_id"],
+        )
+        if updated_document is None:
+            return
+
+        scroll_position = self._get_scroll_position()
+        self._update_cached_document(updated_document)
+        self._replace_document_row(updated_document)
+        self._restore_scroll_position(scroll_position)
+
+    def _replace_document_row(self, document: dict) -> None:
+        row_info = self.document_rows.get(document["id"])
+        if not row_info or not self.current_view:
+            return
+
+        name_label = row_info.get("name_label")
+        if name_label in self.document_name_labels:
+            self.document_name_labels.remove(name_label)
+
+        for widget in row_info["row_widgets"]:
+            if widget.winfo_exists():
+                widget.destroy()
+
+        self._create_document_row(
+            document,
+            row_info["row_index"],
+            self.current_view["periodos"],
+            row_info["group_name"],
+            visible=not self.collapsed_groups.get(row_info["group_name"], False),
+        )
+        self._apply_document_column_width()
+
+    def _apply_group_visibility(self, group_name: str) -> None:
+        group_info = self.group_widgets.get(group_name)
+        if not group_info:
+            return
+
+        collapsed = self.collapsed_groups.get(group_name, False)
+        toggle = group_info.get("toggle")
+        if toggle and toggle.winfo_exists():
+            toggle.configure(text="+" if collapsed else "-")
+
+        for document_id in group_info["document_ids"]:
+            self._set_document_row_visible(document_id, visible=not collapsed)
+
+    def _set_document_row_visible(self, document_id: int, *, visible: bool) -> None:
+        row_info = self.document_rows.get(document_id)
+        if not row_info:
+            return
+
+        for widget in row_info["row_widgets"]:
+            if not widget.winfo_exists():
+                continue
+            if visible:
+                widget.grid()
+            else:
+                widget.grid_remove()
 
     def _get_scroll_position(self) -> float:
         yview = self.scrollable.canvas.yview()
@@ -568,6 +799,36 @@ class ControleTab(ttk.Frame):
     def _set_default_message(self, text: str) -> None:
         self.default_message_text = text
         self.message_var.set(text)
+
+    def _apply_document_column_width(self) -> None:
+        if not self.scrollable.winfo_exists():
+            return
+
+        self.document_column_width = max(self.document_column_width, 180)
+        self.scrollable.inner.grid_columnconfigure(0, weight=0, minsize=self.document_column_width)
+
+        if self.document_header_frame and self.document_header_frame.winfo_exists():
+            self.document_header_frame.configure(width=self.document_column_width)
+
+        wraplength = max(self.document_column_width - 24, 120)
+        for label in self.document_name_labels:
+            if label.winfo_exists():
+                label.configure(wraplength=wraplength)
+
+    def _start_document_column_resize(self, event) -> None:
+        self._resize_start_x = event.x_root
+        self._resize_start_width = self.document_column_width
+
+    def _resize_document_column(self, event) -> None:
+        if self._resize_start_x is None or self._resize_start_width is None:
+            return
+
+        self.document_column_width = self._resize_start_width + (event.x_root - self._resize_start_x)
+        self._apply_document_column_width()
+
+    def _finish_document_column_resize(self, _event=None) -> None:
+        self._resize_start_x = None
+        self._resize_start_width = None
 
     def _format_timestamp(self, raw_value: str) -> str:
         try:

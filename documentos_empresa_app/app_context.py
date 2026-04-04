@@ -52,6 +52,8 @@ class ApplicationServices:
 def build_application_services(db_path: str | Path, session_service: SessionService | None = None) -> ApplicationServices:
     db_manager = DatabaseManager(db_path)
     initialize_schema(db_manager)
+    database_maintenance_service = DatabaseMaintenanceService(db_manager)
+    database_maintenance_service.optimize_database()
 
     session = session_service or SessionService()
 
@@ -103,7 +105,6 @@ def build_application_services(db_path: str | Path, session_service: SessionServ
         periodo_service,
         status_service,
     )
-    database_maintenance_service = DatabaseMaintenanceService(db_manager)
     auth_service = AuthService(usuario_repository, remembered_session_repository)
     user_service = UserService(
         usuario_repository,

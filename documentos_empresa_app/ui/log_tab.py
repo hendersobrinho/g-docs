@@ -35,10 +35,10 @@ class LogTab(ttk.Frame):
         self.month_combo = ttk.Combobox(filter_frame, textvariable=self.month_var, state="readonly", width=20)
         self.month_combo.grid(row=1, column=2, sticky="w", padx=(0, 10))
 
-        ttk.Button(filter_frame, text="Aplicar filtros", command=self.refresh_data).grid(
-            row=1, column=3, sticky="w", padx=(0, 8)
-        )
-        ttk.Button(filter_frame, text="Limpar filtros", command=self.clear_filters).grid(row=1, column=4, sticky="w")
+        action_frame = ttk.Frame(filter_frame)
+        action_frame.grid(row=1, column=3, columnspan=2, sticky="w")
+        ttk.Button(action_frame, text="Aplicar filtros", command=self.refresh_data).pack(side="left")
+        ttk.Button(action_frame, text="Limpar filtros", command=self.clear_filters).pack(side="left", padx=(6, 0))
 
         filter_frame.columnconfigure(0, weight=1)
 

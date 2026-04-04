@@ -55,6 +55,15 @@ SCHEMA_STATEMENTS = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS nomes_documento_padrao_sistema (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tipo_documento_id INTEGER NOT NULL,
+        nome_documento TEXT NOT NULL COLLATE NOCASE,
+        FOREIGN KEY (tipo_documento_id) REFERENCES tipos_documento(id) ON DELETE CASCADE,
+        CONSTRAINT uq_nome_documento_padrao UNIQUE (tipo_documento_id, nome_documento)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS documentos_empresa (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         empresa_id INTEGER NOT NULL,
@@ -128,12 +137,20 @@ SCHEMA_STATEMENTS = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_documentos_empresa_empresa ON documentos_empresa (empresa_id)",
+    "CREATE INDEX IF NOT EXISTS idx_documentos_empresa_tipo ON documentos_empresa (tipo_documento_id)",
     "CREATE INDEX IF NOT EXISTS idx_periodos_ano_mes ON periodos (ano, mes)",
     "CREATE INDEX IF NOT EXISTS idx_status_documento_periodo ON status_documento_mensal (documento_empresa_id, periodo_id)",
+    """
+    CREATE INDEX IF NOT EXISTS idx_status_documento_encerrado_periodo
+    ON status_documento_mensal (documento_empresa_id, periodo_id)
+    WHERE status = 'Encerrado'
+    """,
     "CREATE INDEX IF NOT EXISTS idx_usuarios_username ON usuarios (username)",
     "CREATE INDEX IF NOT EXISTS idx_sessoes_lembradas_usuario ON sessoes_lembradas (usuario_id)",
     "CREATE INDEX IF NOT EXISTS idx_logs_data_hora ON logs (data_hora DESC)",
     "CREATE INDEX IF NOT EXISTS idx_logs_usuario_id ON logs (usuario_id)",
+    "CREATE INDEX IF NOT EXISTS idx_logs_empresa_data_hora ON logs (empresa_id, data_hora DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_logs_periodo_data_hora ON logs (periodo_ano, periodo_mes, data_hora DESC)",
 )
 
 

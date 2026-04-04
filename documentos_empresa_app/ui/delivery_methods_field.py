@@ -160,9 +160,9 @@ class DeliveryMethodsField(ttk.LabelFrame):
         self.dialog_title = dialog_title
         self.delivery_method_service = delivery_method_service
         self.option_var = tk.StringVar()
-        self.summary_var = tk.StringVar(value="Nenhum meio selecionado.")
         self.selected_values: list[str] = []
         self.available_values: list[str] = list(DOCUMENT_DELIVERY_OPTIONS)
+        self.editable = True
 
         self.combo = ttk.Combobox(
             self,
@@ -172,42 +172,43 @@ class DeliveryMethodsField(ttk.LabelFrame):
             width=18,
         )
         self.combo.grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        self.combo.bind("<Return>", self.add_selected)
-
-        ttk.Button(self, text="+", width=3, command=self.add_selected).grid(row=0, column=1, sticky="ew", padx=(0, 4))
-        ttk.Button(self, text="-", width=3, command=self.remove_selected).grid(row=0, column=2, sticky="ew", padx=(0, 4))
+        self.combo.bind("<<ComboboxSelected>>", self.toggle_selected)
+        self.combo.bind("<Return>", self.toggle_selected)
         self.manage_button = ttk.Button(self, text="...", width=3, command=self.open_manager_dialog)
-        self.manage_button.grid(row=0, column=3, sticky="ew")
+        self.manage_button.grid(row=0, column=1, sticky="ew")
 
-        self.hint_label = ttk.Label(
-            self,
-            text="Use + para incluir, - para retirar e ... para gerenciar a lista do sistema.",
-            justify="left",
-        )
-        self.hint_label.grid(row=1, column=0, columnspan=4, sticky="w", pady=(6, 2))
+        list_frame = ttk.Frame(self)
+        list_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        list_frame.columnconfigure(0, weight=1)
 
-        self.summary_label = ttk.Label(
-            self,
-            textvariable=self.summary_var,
-            justify="left",
-            foreground="#4F4F4F",
-            wraplength=520,
+        self.selected_listbox = tk.Listbox(
+            list_frame,
+            height=2,
+            exportselection=False,
+            activestyle="dotbox",
         )
-        self.summary_label.grid(row=2, column=0, columnspan=4, sticky="w")
+        self.selected_listbox.grid(row=0, column=0, sticky="ew")
+        self.selected_listbox.bind("<<ListboxSelect>>", self._on_list_selection_changed)
+        self.selected_listbox.bind("<Double-1>", self.remove_selected_item)
+        self.selected_listbox.bind("<Delete>", self.remove_selected_item)
+
+        self.remove_button = ttk.Button(list_frame, text="Remover", command=self.remove_selected_item)
+        self.remove_button.grid(row=0, column=1, sticky="ns", padx=(6, 0))
 
         self.columnconfigure(0, weight=1)
-        self.bind("<Configure>", self._on_resize)
         self.refresh_available_values()
+        self._sync_selected_listbox()
+        self.set_editable(True)
 
     def get_values(self) -> list[str]:
+        self._commit_pending_selection()
         return list(self.selected_values)
 
     def set_values(self, raw_value: str | list[str] | tuple[str, ...] | None) -> None:
         self.option_var.set("")
         self.selected_values = parse_delivery_methods(raw_value, known_options=self.available_values)
-        self._merge_available_values(self.selected_values)
         self._update_combo_values()
-        self._refresh_summary()
+        self._sync_selected_listbox()
 
     def clear(self) -> None:
         self.set_values(None)
@@ -215,48 +216,33 @@ class DeliveryMethodsField(ttk.LabelFrame):
     def refresh_available_values(self) -> None:
         if self.delivery_method_service:
             self.available_values = [item["nome_meio"] for item in self.delivery_method_service.list_methods()]
-        self._merge_available_values(self.selected_values)
         self._update_combo_values()
-        self._refresh_summary()
+        self._sync_selected_listbox()
 
-    def add_selected(self, _event=None) -> None:
-        selected = self._normalize_single_value(self.option_var.get())
-        if not selected:
-            messagebox.showwarning(self.dialog_title, "Selecione ou digite um meio de recebimento.", parent=self)
+    def toggle_selected(self, _event=None) -> None:
+        if not self.editable:
             return
 
-        self._merge_available_values([selected])
-        if not self._contains_value(self.selected_values, selected):
+        selected = self._normalize_single_value(self.option_var.get())
+        if not selected:
+            return
+
+        existing_index = next(
+            (index for index, item in enumerate(self.selected_values) if item.casefold() == selected.casefold()),
+            None,
+        )
+        if existing_index is None:
             self.selected_values.append(selected)
+        else:
+            self.selected_values.pop(existing_index)
 
         self.option_var.set("")
         self._update_combo_values()
-        self._refresh_summary()
-
-    def remove_selected(self) -> None:
-        selected = self._normalize_single_value(self.option_var.get())
-        if not selected:
-            messagebox.showwarning(
-                self.dialog_title,
-                "Selecione ou digite o meio que deseja remover do cadastro atual.",
-                parent=self,
-            )
-            return
-
-        for index, item in enumerate(self.selected_values):
-            if item.casefold() == selected.casefold():
-                self.selected_values.pop(index)
-                self.option_var.set("")
-                self._refresh_summary()
-                return
-
-        messagebox.showwarning(
-            self.dialog_title,
-            "Esse meio nao esta marcado no cadastro atual.",
-            parent=self,
-        )
+        self._sync_selected_listbox()
 
     def open_manager_dialog(self) -> None:
+        if not self.editable:
+            return
         if not self.delivery_method_service:
             messagebox.showwarning(
                 self.dialog_title,
@@ -273,24 +259,62 @@ class DeliveryMethodsField(ttk.LabelFrame):
         values = parse_delivery_methods([raw_value or ""], known_options=self.available_values)
         return values[0] if values else ""
 
-    def _merge_available_values(self, values: list[str]) -> None:
-        for value in values:
-            if not self._contains_value(self.available_values, value):
-                self.available_values.append(value)
-
-    def _contains_value(self, values: list[str], target: str) -> bool:
-        return any(item.casefold() == target.casefold() for item in values)
+    def _commit_pending_selection(self) -> None:
+        if not self.editable:
+            return
+        selected = self._normalize_single_value(self.option_var.get())
+        if not selected:
+            return
+        if any(item.casefold() == selected.casefold() for item in self.selected_values):
+            self.option_var.set("")
+            return
+        self.selected_values.append(selected)
+        self.option_var.set("")
+        self._sync_selected_listbox()
 
     def _update_combo_values(self) -> None:
         self.combo["values"] = sorted(self.available_values, key=str.casefold)
 
-    def _refresh_summary(self) -> None:
-        if not self.selected_values:
-            self.summary_var.set("Nenhum meio selecionado.")
-            return
-        self.summary_var.set(f'Selecionados: {", ".join(self.selected_values)}')
+    def remove_selected_item(self, _event=None) -> str | None:
+        if not self.editable:
+            return "break"
 
-    def _on_resize(self, _event=None) -> None:
-        wraplength = max(self.winfo_width() - 24, 180)
-        self.hint_label.configure(wraplength=wraplength)
-        self.summary_label.configure(wraplength=wraplength)
+        selection = self.selected_listbox.curselection()
+        if not selection:
+            return "break"
+
+        index = selection[0]
+        if 0 <= index < len(self.selected_values):
+            self.selected_values.pop(index)
+            self._sync_selected_listbox()
+        return "break"
+
+    def set_editable(self, enabled: bool) -> None:
+        self.editable = enabled
+        self.combo.configure(state="normal" if enabled else "disabled")
+        self.manage_button.configure(state="normal" if enabled else "disabled")
+        self.selected_listbox.configure(state="normal" if enabled else "disabled")
+        self._set_remove_button_state()
+
+    def _sync_selected_listbox(self) -> None:
+        list_state = str(self.selected_listbox.cget("state"))
+        if list_state == "disabled":
+            self.selected_listbox.configure(state="normal")
+
+        self.selected_listbox.delete(0, "end")
+        for value in self.selected_values:
+            self.selected_listbox.insert("end", value)
+
+        list_height = min(max(len(self.selected_values), 2), 4)
+        self.selected_listbox.configure(height=list_height)
+        self._set_remove_button_state()
+
+        if list_state == "disabled":
+            self.selected_listbox.configure(state="disabled")
+
+    def _set_remove_button_state(self) -> None:
+        has_selection = bool(self.selected_listbox.curselection())
+        self.remove_button.configure(state="normal" if self.editable and has_selection else "disabled")
+
+    def _on_list_selection_changed(self, _event=None) -> None:
+        self._set_remove_button_state()

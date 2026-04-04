@@ -2,7 +2,12 @@
 
 # 13. Dependencias E Bibliotecas Usadas
 
-## 13.1 Dependencias externas via `requirements.txt`
+## 13.1 Requisito minimo de Python
+
+- Python `3.10+`
+- `tkinter` precisa estar disponivel no ambiente
+
+## 13.2 Dependencias externas via `requirements.txt`
 
 ### `openpyxl`
 
@@ -27,7 +32,7 @@
   - scripts de build
 - Por que e necessario: gerar distribuicao desktop
 
-## 13.2 Bibliotecas da biblioteca padrao do Python
+## 13.3 Bibliotecas da biblioteca padrao do Python
 
 | Biblioteca | Uso principal |
 |---|---|
@@ -44,7 +49,7 @@
 | `collections.Counter` | contagem de periodos por ano |
 | `tempfile`, `unittest`, `unittest.mock` | testes |
 
-## 13.3 Dependencias opcionais do ambiente
+## 13.4 Dependencias opcionais do ambiente
 
 Estas dependencias nao sao obrigatorias para o projeto funcionar em todos os fluxos, mas melhoram a experiencia ou sao usadas por plataforma:
 
@@ -70,11 +75,13 @@ Estas dependencias nao sao obrigatorias para o projeto funcionar em todos os flu
 
 - Nao e dependencia Python
 - Necessario apenas para gerar instalador Windows a partir de `installer/G-docs.iss`
+- O script `build_release.bat` tenta usá-lo automaticamente quando `iscc` esta no `PATH`
 
 ### `cairosvg`
 
 - Dependencia opcional de desenvolvimento
 - Se estiver instalada, `scripts/generate_icons.py` renderiza o `icon.svg` diretamente
 - Se nao estiver instalada, o script usa o PNG embutido no SVG atual como fallback
+- Facilita manutencao visual dos icones, mas nao e obrigatoria para empacotar o sistema
 
 ---

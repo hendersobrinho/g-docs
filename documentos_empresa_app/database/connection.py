@@ -23,8 +23,7 @@ class DatabaseManager:
             return
 
         connection = sqlite3.connect(self.db_path)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
+        self._configure_connection(connection)
         self._active_connection = connection
         self._connection_depth = 1
         try:
@@ -37,3 +36,11 @@ class DatabaseManager:
             self._connection_depth = 0
             self._active_connection = None
             connection.close()
+
+    def _configure_connection(self, connection: sqlite3.Connection) -> None:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA busy_timeout = 5000")
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = NORMAL")
+        connection.execute("PRAGMA temp_store = MEMORY")

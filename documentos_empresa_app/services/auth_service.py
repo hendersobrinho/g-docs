@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from documentos_empresa_app.database.repositories import RememberedSessionRepository, UsuarioRepository
 from documentos_empresa_app.utils.common import ValidationError
 from documentos_empresa_app.utils.security import (
@@ -9,6 +11,8 @@ from documentos_empresa_app.utils.security import (
     verify_password,
     verify_remember_secret,
 )
+
+REMEMBER_SESSION_MAX_AGE_DAYS = 60
 
 
 class AuthService:
@@ -35,22 +39,27 @@ class AuthService:
         user.pop("senha_hash", None)
         return user
 
-    def authenticate_with_remembered_session(self, raw_token: str) -> dict:
+    def authenticate_with_remembered_session(self, raw_token: str) -> tuple[dict, str]:
         selector, secret = self._parse_remembered_token(raw_token)
         if not self.remembered_session_repository:
             raise ValidationError("Login lembrado nao esta habilitado.")
 
-        remembered_session = self.remembered_session_repository.get_by_selector(selector)
-        if not remembered_session or not verify_remember_secret(secret, remembered_session["token_hash"]):
-            raise ValidationError("Credencial lembrada invalida.")
+        with self.remembered_session_repository.db_manager.connect():
+            remembered_session = self.remembered_session_repository.get_by_selector(selector)
+            if not remembered_session or not verify_remember_secret(secret, remembered_session["token_hash"]):
+                raise ValidationError("Credencial lembrada invalida.")
 
-        user = self.usuario_repository.get_by_id(remembered_session["usuario_id"])
-        if not user or not user["ativa"]:
-            self.remembered_session_repository.delete_by_selector(selector)
-            raise ValidationError("Esse usuario nao pode mais usar a credencial lembrada.")
+            if self._is_remembered_session_expired(remembered_session):
+                self.remembered_session_repository.delete_by_selector(selector)
+                raise ValidationError("Credencial lembrada expirada. Faca login novamente.")
 
-        self.remembered_session_repository.touch(remembered_session["id"])
-        return user
+            user = self.usuario_repository.get_by_id(remembered_session["usuario_id"])
+            if not user or not user["ativa"]:
+                self.remembered_session_repository.delete_by_selector(selector)
+                raise ValidationError("Esse usuario nao pode mais usar a credencial lembrada.")
+
+            refreshed_token = self._rotate_remembered_session(user["id"], selector)
+        return user, refreshed_token
 
     def create_remembered_session(self, user_id: int) -> str:
         if not self.remembered_session_repository:
@@ -87,3 +96,22 @@ class AuthService:
         if not selector or not separator or not secret:
             raise ValidationError("Credencial lembrada invalida.")
         return selector, secret
+
+    def _rotate_remembered_session(self, user_id: int, previous_selector: str) -> str:
+        selector = generate_remember_selector()
+        secret = generate_remember_secret()
+        self.remembered_session_repository.create(user_id, selector, hash_remember_secret(secret))
+        self.remembered_session_repository.delete_by_selector(previous_selector)
+        return f"{selector}.{secret}"
+
+    def _is_remembered_session_expired(self, remembered_session: dict) -> bool:
+        last_activity = remembered_session.get("ultimo_uso_em") or remembered_session.get("criado_em")
+        if not last_activity:
+            return True
+
+        activity_at = self._parse_timestamp(last_activity)
+        expiration_limit = datetime.now(timezone.utc) - timedelta(days=REMEMBER_SESSION_MAX_AGE_DAYS)
+        return activity_at < expiration_limit
+
+    def _parse_timestamp(self, raw_value: str) -> datetime:
+        return datetime.strptime(str(raw_value), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)

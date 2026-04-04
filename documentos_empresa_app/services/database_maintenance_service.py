@@ -7,6 +7,15 @@ import sqlite3
 from documentos_empresa_app.database.connection import DatabaseManager
 from documentos_empresa_app.utils.common import ValidationError
 
+REQUIRED_APPLICATION_TABLES = {
+    "empresas",
+    "tipos_documento",
+    "documentos_empresa",
+    "periodos",
+    "status_documento_mensal",
+    "usuarios",
+}
+
 
 class DatabaseMaintenanceService:
     def __init__(self, db_manager: DatabaseManager) -> None:
@@ -58,9 +67,23 @@ class DatabaseMaintenanceService:
                 source_connection = None
             gc.collect()
 
+        self.optimize_database()
+
         return {
             "path": str(source),
             "size_bytes": source.stat().st_size,
+        }
+
+    def optimize_database(self) -> dict:
+        with self.db_manager.connect() as connection:
+            connection.execute("PRAGMA optimize")
+            page_count = int(connection.execute("PRAGMA page_count").fetchone()[0])
+            free_pages = int(connection.execute("PRAGMA freelist_count").fetchone()[0])
+
+        return {
+            "optimized": True,
+            "page_count": page_count,
+            "free_pages": free_pages,
         }
 
     def _normalize_target_path(self, raw_path: str | Path) -> Path:
@@ -80,6 +103,16 @@ class DatabaseMaintenanceService:
         try:
             connection = sqlite3.connect(file_path)
             connection.execute("PRAGMA schema_version").fetchone()
+            available_tables = {
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            }
+            if not REQUIRED_APPLICATION_TABLES.issubset(available_tables):
+                raise ValidationError(
+                    "O arquivo selecionado nao pertence a este sistema ou esta com estrutura incompleta."
+                )
         except sqlite3.Error as exc:
             raise ValidationError("O arquivo selecionado nao parece ser um banco SQLite valido.") from exc
         finally:

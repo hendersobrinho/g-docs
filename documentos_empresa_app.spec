@@ -3,10 +3,10 @@
 from pathlib import Path
 import sys
 
-
-ROOT_DIR = Path.cwd()
+ROOT_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
 ICONS_DIR = ROOT_DIR / "assets" / "icons"
 BUILD_PLATFORM = sys.platform
+APP_NAME = "G-docs"
 
 
 def get_build_icon_path() -> Path | None:
@@ -41,7 +41,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="G-docs",
+    name=APP_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -63,5 +63,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="G-docs",
+    name=APP_NAME,
 )

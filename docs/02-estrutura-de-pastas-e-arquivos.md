@@ -11,11 +11,14 @@
 ├── requirements.txt
 ├── documentos_empresa_app.spec
 ├── assets/
+│   ├── capa.png
 │   └── icons/
 │       ├── icon.svg
 │       ├── icon.png
 │       ├── icon.ico
 │       └── icon.icns
+├── docs/
+│   └── ...
 ├── documentos_empresa_app/
 │   ├── __init__.py
 │   ├── app_context.py
@@ -47,6 +50,8 @@
 │   │   ├── __init__.py
 │   │   ├── controle_tab.py
 │   │   ├── delivery_methods_field.py
+│   │   ├── document_name_field.py
+│   │   ├── document_type_manager_dialog.py
 │   │   ├── documento_tab.py
 │   │   ├── edicao_tab.py
 │   │   ├── empresa_tab.py
@@ -99,6 +104,10 @@ Concentra os arquivos do icone do sistema de forma organizada e preparada para e
 | `icon.png` | derivado para Linux e interface | usado na janela Tkinter e em integracao visual no Linux |
 | `icon.ico` | derivado para Windows | usado no executavel Windows e no instalador |
 | `icon.icns` | derivado para macOS | usado no app bundle do macOS |
+
+### Pasta `docs/`
+
+Contem a documentacao tecnica detalhada do projeto, cobrindo arquitetura, banco, fluxo de uso, dependencias e empacotamento.
 
 ### Pasta `documentos_empresa_app/`
 
@@ -161,6 +170,8 @@ Contem a interface grafica Tkinter.
 | `controle_tab.py` | consulta e alteracao de status por periodo |
 | `empresa_tab.py` | cadastro de empresas |
 | `documento_tab.py` | cadastro de documentos por empresa |
+| `document_name_field.py` | janela/componente para gerenciar nomes padrao de documentos |
+| `document_type_manager_dialog.py` | janela dedicada para gerenciar tipos de documento |
 | `tipo_tab.py` | tela auxiliar/legada para tipos; nao e montada pela `MainWindow` atual |
 | `edicao_tab.py` | tela auxiliar/legada para manutencao consolidada; nao e montada pela `MainWindow` atual |
 | `periodo_tab.py` | geracao de periodos e exclusao de ano |

@@ -4,17 +4,18 @@
 
 ## 19.1 O que deve ir para o Git
 
-Arquivos importantes para versionamento:
+Arquivos e pastas que fazem parte do projeto:
 
-- codigo-fonte em `documentos_empresa_app/`
+- `documentos_empresa_app/`
 - `main.py`
-- `requirements.txt`
 - `README.md`
+- `requirements.txt`
 - `documentos_empresa_app.spec`
-- `assets/icons/`
+- `assets/`
 - `scripts/`
 - `installer/`
 - `tests/`
+- `docs/`
 
 ## 19.2 O que deve ficar fora do Git
 
@@ -23,19 +24,41 @@ Artefatos locais e gerados:
 - `.venv/`
 - `build/`
 - `dist/`
+- `dist_release/`
 - `dist_installer/`
-- caches
-- logs
-- bancos locais
+- bancos SQLite locais e arquivos auxiliares (`*.db`, `*.sqlite`, `*.db-wal`, `*.db-shm`, etc.)
+- caches de teste, lint e tipagem
+- planilhas exportadas localmente
 - arquivos temporarios de editor
+- pacotes finais (`.zip`, `.tar.gz`, `.dmg`, `.deb`, `.rpm`, etc.)
 
-## 19.3 Observacao sobre o seu repositorio atual
+## 19.3 Sobre o `.gitignore`
 
-No ambiente em que esta documentacao foi gerada, o `git rev-parse --show-toplevel` aponta para `/home/hnd`, ou seja, o repositorio Git atual esta acima da pasta do projeto.
+O `.gitignore` da raiz foi ajustado para cobrir:
 
-Na pratica, isso significa:
+- artefatos de release
+- arquivos de banco e WAL/SHM
+- caches de ferramenta
+- ambientes virtuais
+- arquivos temporarios comuns
 
-- se voce pretende publicar somente este projeto, o ideal e criar um repositorio Git proprio em `/home/hnd/Projects/python`
-- se for manter o repositorio atual na pasta home, o `.gitignore` da raiz do repositorio precisa cobrir o escopo inteiro, nao apenas esta pasta
+Isso evita que o repositório acumule restos de empacotamento ao longo das entregas.
+
+## 19.4 Fluxo recomendado de release
+
+1. atualizar codigo e documentacao
+2. rodar os testes
+3. gerar o build no sistema operacional correto
+4. validar a pasta `dist/G-docs`
+5. distribuir o artefato de `dist_release/`
+6. no Windows, gerar o instalador com `Inno Setup` quando necessario
+
+## 19.5 Observacao sobre o repositorio
+
+Se este projeto for publicado isoladamente, o ideal e que a raiz Git seja a propria pasta do projeto:
+
+- raiz recomendada: `/home/hnd/Projects/python`
+
+Se o Git ficar acima disso, o `.gitignore` precisa continuar cobrindo o escopo inteiro do repositório.
 
 ---

@@ -39,6 +39,11 @@ class StorageHelperTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 create_database_directory(temp_dir, "/tmp/invalido")
 
+    def test_create_database_directory_rejects_parent_traversal(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(ValidationError):
+                create_database_directory(temp_dir, "../fora")
+
     def test_is_path_within_directory_detects_nested_path(self) -> None:
         self.assertTrue(is_path_within_directory("/tmp/app/dados/base.db", "/tmp/app"))
         self.assertFalse(is_path_within_directory("/tmp/dados/base.db", "/tmp/app"))

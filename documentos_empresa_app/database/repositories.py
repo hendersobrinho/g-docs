@@ -4,6 +4,8 @@ import sqlite3
 
 from documentos_empresa_app.database.connection import DatabaseManager
 
+SQLITE_MAX_VARIABLE_NUMBER = 900
+
 
 class BaseRepository:
     def __init__(self, db_manager: DatabaseManager) -> None:
@@ -27,6 +29,21 @@ class BaseRepository:
     def _executemany(self, query: str, params_list: list[tuple]) -> None:
         with self.db_manager.connect() as connection:
             connection.executemany(query, params_list)
+
+    @staticmethod
+    def _unique_values(values: list[int]) -> list[int]:
+        unique_values: list[int] = []
+        seen_values: set[int] = set()
+        for value in values:
+            if value in seen_values:
+                continue
+            seen_values.add(value)
+            unique_values.append(value)
+        return unique_values
+
+    @staticmethod
+    def _chunk_values(values: list[int], chunk_size: int = SQLITE_MAX_VARIABLE_NUMBER) -> list[list[int]]:
+        return [values[index:index + chunk_size] for index in range(0, len(values), chunk_size)]
 
 
 class EmpresaRepository(BaseRepository):
@@ -64,6 +81,27 @@ class EmpresaRepository(BaseRepository):
         if active_only:
             query += " AND ativa = 1"
         return self._fetchone(query, tuple(params))
+
+    def list_by_ids(self, empresa_ids: list[int]) -> list[dict]:
+        unique_ids = self._unique_values(empresa_ids)
+        if not unique_ids:
+            return []
+        rows: list[dict] = []
+        for chunk in self._chunk_values(unique_ids):
+            placeholders = ", ".join("?" for _ in chunk)
+            rows.extend(
+                self._fetchall(
+                    f"""
+                    SELECT id, codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato,
+                           observacao, diretorio_documentos, ativa
+                    FROM empresas
+                    WHERE id IN ({placeholders})
+                    """,
+                    tuple(chunk),
+                )
+            )
+        rows.sort(key=lambda item: (item["codigo_empresa"], item["nome_empresa"].casefold()))
+        return rows
 
     def create(
         self,
@@ -437,6 +475,34 @@ class DocumentoRepository(BaseRepository):
             (empresa_id,),
         )
 
+    def list_by_company_ids(self, empresa_ids: list[int]) -> list[dict]:
+        unique_ids = self._unique_values(empresa_ids)
+        if not unique_ids:
+            return []
+        rows: list[dict] = []
+        for chunk in self._chunk_values(unique_ids):
+            placeholders = ", ".join("?" for _ in chunk)
+            rows.extend(
+                self._fetchall(
+                    f"""
+                    SELECT
+                        d.id,
+                        d.empresa_id,
+                        d.tipo_documento_id,
+                        d.meios_recebimento,
+                        d.nome_documento,
+                        t.nome_tipo,
+                        t.regra_ocorrencia
+                    FROM documentos_empresa d
+                    INNER JOIN tipos_documento t ON t.id = d.tipo_documento_id
+                    WHERE d.empresa_id IN ({placeholders})
+                    """,
+                    tuple(chunk),
+                )
+            )
+        rows.sort(key=lambda item: (item["empresa_id"], item["nome_tipo"].casefold(), item["nome_documento"].casefold()))
+        return rows
+
     def get_by_id(self, documento_id: int) -> dict | None:
         return self._fetchone(
             """
@@ -454,6 +520,112 @@ class DocumentoRepository(BaseRepository):
             """,
             (documento_id,),
         )
+
+    def list_system_names(self, tipo_documento_id: int | None = None, search: str | None = None) -> list[dict]:
+        filters: list[str] = []
+        params: list = []
+
+        if tipo_documento_id is not None:
+            filters.append("n.tipo_documento_id = ?")
+            params.append(tipo_documento_id)
+
+        normalized_search = str(search or "").strip()
+        if normalized_search:
+            filters.append("n.nome_documento LIKE ? COLLATE NOCASE")
+            params.append(f"%{normalized_search}%")
+
+        query = """
+            SELECT
+                n.id,
+                n.tipo_documento_id,
+                n.nome_documento,
+                t.nome_tipo
+            FROM nomes_documento_padrao_sistema n
+            INNER JOIN tipos_documento t ON t.id = n.tipo_documento_id
+        """
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+        query += " ORDER BY t.nome_tipo, n.nome_documento"
+        return self._fetchall(query, tuple(params))
+
+    def list_distinct_system_names(self, tipo_documento_id: int | None = None, search: str | None = None) -> list[str]:
+        filters: list[str] = []
+        params: list = []
+
+        if tipo_documento_id is not None:
+            filters.append("tipo_documento_id = ?")
+            params.append(tipo_documento_id)
+
+        normalized_search = str(search or "").strip()
+        if normalized_search:
+            filters.append("nome_documento LIKE ? COLLATE NOCASE")
+            params.append(f"%{normalized_search}%")
+
+        query = """
+            SELECT DISTINCT nome_documento
+            FROM nomes_documento_padrao_sistema
+        """
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+        query += " ORDER BY nome_documento"
+
+        rows = self._fetchall(query, tuple(params))
+        return [row["nome_documento"] for row in rows]
+
+    def get_system_name_by_id(self, name_id: int) -> dict | None:
+        return self._fetchone(
+            """
+            SELECT
+                n.id,
+                n.tipo_documento_id,
+                n.nome_documento,
+                t.nome_tipo
+            FROM nomes_documento_padrao_sistema n
+            INNER JOIN tipos_documento t ON t.id = n.tipo_documento_id
+            WHERE n.id = ?
+            """,
+            (name_id,),
+        )
+
+    def find_duplicate_system_name(
+        self,
+        tipo_documento_id: int,
+        nome_documento: str,
+        ignore_id: int | None = None,
+    ) -> dict | None:
+        query = """
+            SELECT id
+            FROM nomes_documento_padrao_sistema
+            WHERE tipo_documento_id = ?
+              AND nome_documento = ?
+        """
+        params: list = [tipo_documento_id, nome_documento]
+        if ignore_id is not None:
+            query += " AND id <> ?"
+            params.append(ignore_id)
+        return self._fetchone(query, tuple(params))
+
+    def create_system_name(self, tipo_documento_id: int, nome_documento: str) -> int:
+        return self._execute(
+            """
+            INSERT INTO nomes_documento_padrao_sistema (tipo_documento_id, nome_documento)
+            VALUES (?, ?)
+            """,
+            (tipo_documento_id, nome_documento),
+        )
+
+    def update_system_name(self, name_id: int, tipo_documento_id: int, nome_documento: str) -> None:
+        self._execute(
+            """
+            UPDATE nomes_documento_padrao_sistema
+            SET tipo_documento_id = ?, nome_documento = ?
+            WHERE id = ?
+            """,
+            (tipo_documento_id, nome_documento, name_id),
+        )
+
+    def delete_system_name(self, name_id: int) -> None:
+        self._execute("DELETE FROM nomes_documento_padrao_sistema WHERE id = ?", (name_id,))
 
     def list_distinct_names(self, tipo_documento_id: int | None = None, search: str | None = None) -> list[str]:
         filters: list[str] = []
@@ -540,10 +712,12 @@ class DocumentoRepository(BaseRepository):
         self._execute("DELETE FROM documentos_empresa WHERE id = ?", (documento_id,))
 
     def delete_many(self, documento_ids: list[int]) -> None:
-        if not documento_ids:
+        unique_ids = self._unique_values(documento_ids)
+        if not unique_ids:
             return
-        placeholders = ", ".join("?" for _ in documento_ids)
-        self._execute(f"DELETE FROM documentos_empresa WHERE id IN ({placeholders})", tuple(documento_ids))
+        for chunk in self._chunk_values(unique_ids):
+            placeholders = ", ".join("?" for _ in chunk)
+            self._execute(f"DELETE FROM documentos_empresa WHERE id IN ({placeholders})", tuple(chunk))
 
 
 class PeriodoRepository(BaseRepository):
@@ -581,10 +755,11 @@ class PeriodoRepository(BaseRepository):
             """
             SELECT id, ano, mes
             FROM periodos
-            WHERE (ano * 100 + mes) BETWEEN (? * 100 + ?) AND (? * 100 + ?)
+            WHERE (ano > ? OR (ano = ? AND mes >= ?))
+              AND (ano < ? OR (ano = ? AND mes <= ?))
             ORDER BY ano, mes
             """,
-            (start_ano, start_mes, end_ano, end_mes),
+            (start_ano, start_ano, start_mes, end_ano, end_ano, end_mes),
         )
 
     def delete_year(self, ano: int) -> int:
@@ -639,28 +814,37 @@ class StatusRepository(BaseRepository):
         )
 
     def list_for_documents_and_periods(self, documento_ids: list[int], periodo_ids: list[int]) -> list[dict]:
-        if not documento_ids or not periodo_ids:
+        unique_document_ids = self._unique_values(documento_ids)
+        unique_period_ids = self._unique_values(periodo_ids)
+        if not unique_document_ids or not unique_period_ids:
             return []
-        doc_placeholders = ", ".join("?" for _ in documento_ids)
-        period_placeholders = ", ".join("?" for _ in periodo_ids)
-        params = tuple(documento_ids + periodo_ids)
-        return self._fetchall(
-            f"""
-            SELECT
-                s.id,
-                s.documento_empresa_id,
-                s.periodo_id,
-                s.status,
-                s.updated_by_user_id,
-                s.updated_at,
-                COALESCE(u.username, 'Sistema') AS updated_by_username
-            FROM status_documento_mensal s
-            LEFT JOIN usuarios u ON u.id = s.updated_by_user_id
-            WHERE s.documento_empresa_id IN ({doc_placeholders})
-              AND s.periodo_id IN ({period_placeholders})
-            """,
-            params,
-        )
+        max_document_chunk = max(SQLITE_MAX_VARIABLE_NUMBER - len(unique_period_ids), 1)
+        period_placeholders = ", ".join("?" for _ in unique_period_ids)
+        rows: list[dict] = []
+        for doc_chunk in self._chunk_values(unique_document_ids, max_document_chunk):
+            doc_placeholders = ", ".join("?" for _ in doc_chunk)
+            params = tuple(doc_chunk + unique_period_ids)
+            rows.extend(
+                self._fetchall(
+                    f"""
+                    SELECT
+                        s.id,
+                        s.documento_empresa_id,
+                        s.periodo_id,
+                        s.status,
+                        s.updated_by_user_id,
+                        s.updated_at,
+                        COALESCE(u.username, 'Sistema') AS updated_by_username
+                    FROM status_documento_mensal s
+                    LEFT JOIN usuarios u ON u.id = s.updated_by_user_id
+                    WHERE s.documento_empresa_id IN ({doc_placeholders})
+                      AND s.periodo_id IN ({period_placeholders})
+                    """,
+                    params,
+                )
+            )
+        rows.sort(key=lambda item: (item["documento_empresa_id"], item["periodo_id"]))
+        return rows
 
     def list_future_statuses(self, documento_empresa_id: int, ano: int, mes: int) -> list[dict]:
         return self._fetchall(
@@ -701,41 +885,54 @@ class StatusRepository(BaseRepository):
         )
 
     def list_earliest_closures(self, documento_ids: list[int]) -> list[dict]:
-        if not documento_ids:
+        unique_ids = self._unique_values(documento_ids)
+        if not unique_ids:
             return []
-        placeholders = ", ".join("?" for _ in documento_ids)
-        return self._fetchall(
-            f"""
-            SELECT
-                s.documento_empresa_id,
-                MIN(p.ano * 100 + p.mes) AS fechamento
-            FROM status_documento_mensal s
-            INNER JOIN periodos p ON p.id = s.periodo_id
-            WHERE s.documento_empresa_id IN ({placeholders})
-              AND s.status = 'Encerrado'
-            GROUP BY s.documento_empresa_id
-            """,
-            tuple(documento_ids),
-        )
+        rows: list[dict] = []
+        for chunk in self._chunk_values(unique_ids):
+            placeholders = ", ".join("?" for _ in chunk)
+            rows.extend(
+                self._fetchall(
+                    f"""
+                    SELECT
+                        s.documento_empresa_id,
+                        MIN(p.ano * 100 + p.mes) AS fechamento
+                    FROM status_documento_mensal s
+                    INNER JOIN periodos p ON p.id = s.periodo_id
+                    WHERE s.documento_empresa_id IN ({placeholders})
+                      AND s.status = 'Encerrado'
+                    GROUP BY s.documento_empresa_id
+                    """,
+                    tuple(chunk),
+                )
+            )
+        rows.sort(key=lambda item: item["documento_empresa_id"])
+        return rows
 
     def list_closures_for_documents(self, documento_ids: list[int]) -> list[dict]:
-        if not documento_ids:
+        unique_ids = self._unique_values(documento_ids)
+        if not unique_ids:
             return []
-        placeholders = ", ".join("?" for _ in documento_ids)
-        return self._fetchall(
-            f"""
-            SELECT
-                s.documento_empresa_id,
-                p.ano,
-                p.mes
-            FROM status_documento_mensal s
-            INNER JOIN periodos p ON p.id = s.periodo_id
-            WHERE s.documento_empresa_id IN ({placeholders})
-              AND s.status = 'Encerrado'
-            ORDER BY p.ano, p.mes
-            """,
-            tuple(documento_ids),
-        )
+        rows: list[dict] = []
+        for chunk in self._chunk_values(unique_ids):
+            placeholders = ", ".join("?" for _ in chunk)
+            rows.extend(
+                self._fetchall(
+                    f"""
+                    SELECT
+                        s.documento_empresa_id,
+                        p.ano,
+                        p.mes
+                    FROM status_documento_mensal s
+                    INNER JOIN periodos p ON p.id = s.periodo_id
+                    WHERE s.documento_empresa_id IN ({placeholders})
+                      AND s.status = 'Encerrado'
+                    """,
+                    tuple(chunk),
+                )
+            )
+        rows.sort(key=lambda item: (item["documento_empresa_id"], item["ano"], item["mes"]))
+        return rows
 
     def delete_future_statuses(self, documento_empresa_id: int, ano: int, mes: int) -> None:
         self._execute(

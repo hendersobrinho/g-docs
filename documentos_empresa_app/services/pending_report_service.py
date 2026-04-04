@@ -51,20 +51,25 @@ class PendingReportService:
         rows: list[dict] = []
         pending_company_ids: set[int] = set()
         period_ids = [periodo["id"] for periodo in periodos]
+        company_id_list = [company["id"] for company in companies]
+        documentos = self.documento_repository.list_by_company_ids(company_id_list)
+        documentos_by_company: dict[int, list[dict]] = {}
+        for documento in documentos:
+            documentos_by_company.setdefault(documento["empresa_id"], []).append(documento)
+
+        document_ids = [documento["id"] for documento in documentos]
+        statuses = {
+            (row["documento_empresa_id"], row["periodo_id"]): row["status"] or ""
+            for row in self.status_repository.list_for_documents_and_periods(document_ids, period_ids)
+        }
+        closures = self._get_closure_key_map(documentos)
 
         for company in companies:
-            documentos = self.documento_repository.list_by_company(company["id"])
-            if not documentos:
+            company_documents = documentos_by_company.get(company["id"], [])
+            if not company_documents:
                 continue
 
-            document_ids = [documento["id"] for documento in documentos]
-            statuses = {
-                (row["documento_empresa_id"], row["periodo_id"]): row["status"] or ""
-                for row in self.status_repository.list_for_documents_and_periods(document_ids, period_ids)
-            }
-            closures = self._get_closure_key_map(documentos)
-
-            for documento in documentos:
+            for documento in company_documents:
                 closure_key = closures.get(documento["id"])
                 occurrence_rule = normalize_type_occurrence_rule(documento.get("regra_ocorrencia"))
                 for periodo in periodos:
@@ -126,12 +131,8 @@ class PendingReportService:
         worksheet.title = "Pendencias"
 
         headers = (
-            "Codigo da empresa",
-            "Nome da empresa",
-            "Ano",
-            "Mes",
+            "Empresa",
             "Periodo",
-            "Tipo do documento",
             "Documento pendente",
             "Status",
         )
@@ -144,12 +145,8 @@ class PendingReportService:
         for row in rows:
             worksheet.append(
                 (
-                    row["codigo_empresa"],
                     row["nome_empresa"],
-                    row["ano"],
-                    row["mes"],
                     row["periodo"],
-                    row["tipo_documento"],
                     row["nome_documento"],
                     row["status"],
                 )
@@ -158,14 +155,10 @@ class PendingReportService:
         worksheet.freeze_panes = "A2"
         worksheet.auto_filter.ref = worksheet.dimensions
         widths = {
-            "A": 18,
-            "B": 36,
-            "C": 10,
-            "D": 10,
-            "E": 22,
-            "F": 24,
-            "G": 38,
-            "H": 14,
+            "A": 36,
+            "B": 22,
+            "C": 38,
+            "D": 14,
         }
         for column, width in widths.items():
             worksheet.column_dimensions[column].width = width
@@ -213,20 +206,17 @@ class PendingReportService:
         if not company_ids:
             return self.empresa_repository.list_all(active_only=False)
 
-        resolved_companies: list[dict] = []
         seen_ids: set[int] = set()
         for company_id in company_ids:
             try:
                 company_id_int = int(company_id)
             except (TypeError, ValueError) as exc:
                 raise ValidationError("Selecione empresas validas para gerar o relatorio.") from exc
-            if company_id_int in seen_ids:
-                continue
-            company = self.empresa_repository.get_by_id(company_id_int)
-            if not company:
-                raise ValidationError("Uma das empresas selecionadas nao foi encontrada.")
             seen_ids.add(company_id_int)
-            resolved_companies.append(company)
+
+        resolved_companies = self.empresa_repository.list_by_ids(sorted(seen_ids))
+        if len(resolved_companies) != len(seen_ids):
+            raise ValidationError("Uma das empresas selecionadas nao foi encontrada.")
 
         resolved_companies.sort(key=lambda item: (item["codigo_empresa"], item["nome_empresa"].casefold()))
         return resolved_companies

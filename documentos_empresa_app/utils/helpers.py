@@ -34,6 +34,8 @@ from documentos_empresa_app.utils.resources import get_executable_directory
 def ensure_config_dir() -> None:
     migrate_legacy_config_dir()
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    _harden_config_directory_permissions()
+    _harden_config_file_permissions(CONFIG_FILE)
 
 
 def migrate_legacy_config_dir() -> None:
@@ -48,6 +50,7 @@ def migrate_legacy_config_dir() -> None:
         legacy_config_file = LEGACY_CONFIG_DIR / "config.json"
         if legacy_config_file.exists() and not CONFIG_FILE.exists():
             shutil.copy2(legacy_config_file, CONFIG_FILE)
+            _harden_config_file_permissions(CONFIG_FILE)
         return
 
     _rewrite_migrated_config_paths(CONFIG_FILE, LEGACY_CONFIG_DIR, CONFIG_DIR)
@@ -70,6 +73,7 @@ def _rewrite_migrated_config_paths(config_file: Path, old_root: Path, new_root: 
         if resolved_path.is_relative_to(old_root):
             config["db_path"] = str(new_root / resolved_path.relative_to(old_root))
             config_file.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+            _harden_config_file_permissions(config_file)
     except OSError:
         return
 
@@ -87,6 +91,7 @@ def load_config() -> dict:
 def save_config(config: dict) -> None:
     ensure_config_dir()
     CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+    _harden_config_file_permissions(CONFIG_FILE)
 
 
 def load_login_preferences() -> dict:
@@ -128,6 +133,24 @@ def save_login_preferences(
     else:
         config.pop("login_preferences", None)
     save_config(config)
+
+
+def _harden_config_directory_permissions() -> None:
+    if os.name == "nt":
+        return
+    try:
+        os.chmod(CONFIG_DIR, 0o700)
+    except OSError:
+        return
+
+
+def _harden_config_file_permissions(file_path: Path) -> None:
+    if os.name == "nt" or not file_path.exists():
+        return
+    try:
+        os.chmod(file_path, 0o600)
+    except OSError:
+        return
 
 
 def open_directory_in_file_manager(directory: str | Path) -> None:
@@ -729,8 +752,9 @@ class CompanySelector(ttk.LabelFrame):
         self.name_combo.bind("<FocusOut>", self._on_name_selected)
         self.name_combo.bind("<F2>", self._open_company_list)
 
-        ttk.Button(self, text="...", width=3, command=self.open_company_list).grid(row=1, column=2, sticky="ew")
-        ttk.Button(self, text="Atualizar lista", command=self.refresh_companies).grid(row=1, column=3, sticky="ew")
+        action_frame = ttk.Frame(self)
+        action_frame.grid(row=1, column=2, columnspan=2, sticky="w")
+        ttk.Button(action_frame, text="...", width=3, command=self.open_company_list).pack(side="left")
         ttk.Label(self, textvariable=self.status_var).grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
 
         self.columnconfigure(1, weight=1)

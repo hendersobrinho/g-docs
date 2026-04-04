@@ -23,7 +23,7 @@ def try_restore_saved_login(services) -> dict | None:
         return None
 
     try:
-        user = services.auth_service.authenticate_with_remembered_session(remembered_token)
+        user, refreshed_token = services.auth_service.authenticate_with_remembered_session(remembered_token)
     except ValidationError:
         services.auth_service.revoke_remembered_session(remembered_token)
         save_login_preferences(
@@ -33,7 +33,12 @@ def try_restore_saved_login(services) -> dict | None:
         )
         return None
 
-    services.session_service.login(user, remembered_token=remembered_token)
+    save_login_preferences(
+        user["username"],
+        remember_credential=True,
+        remembered_token=refreshed_token,
+    )
+    services.session_service.login(user, remembered_token=refreshed_token)
     return user
 
 

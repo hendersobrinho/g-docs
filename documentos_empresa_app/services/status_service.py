@@ -114,6 +114,97 @@ class StatusService:
         if not empresa:
             raise ValidationError("Empresa nao encontrada.")
 
+        periodos = self._resolve_control_periods(start_period_id, end_period_id)
+
+        documentos = self.documento_repository.list_by_company(empresa_id)
+        if not documentos:
+            return {"empresa": empresa, "periodos": periodos, "groups": []}
+
+        period_ids = [periodo["id"] for periodo in periodos]
+        document_ids = [documento["id"] for documento in documentos]
+
+        status_rows = self.status_repository.list_for_documents_and_periods(document_ids, period_ids)
+        statuses = {
+            (row["documento_empresa_id"], row["periodo_id"]): row
+            for row in status_rows
+        }
+        closures = self._get_closure_key_map(documentos)
+
+        grouped: dict[int, dict] = {}
+        for documento in documentos:
+            document_entry = self._build_document_control_entry(
+                documento,
+                periodos,
+                statuses,
+                closures.get(documento["id"]),
+            )
+            if document_entry is None:
+                continue
+
+            group = grouped.setdefault(
+                documento["tipo_documento_id"],
+                {
+                    "tipo_id": documento["tipo_documento_id"],
+                    "tipo_nome": documento["nome_tipo"],
+                    "tipo_ocorrencia": document_entry["tipo_ocorrencia"],
+                    "tipo_ocorrencia_label": document_entry["tipo_ocorrencia_label"],
+                    "documentos": [],
+                }
+            )
+            group["documentos"].append(document_entry)
+
+        groups = [
+            {
+                "tipo_id": group["tipo_id"],
+                "tipo_nome": tipo_nome,
+                "tipo_ocorrencia": group["tipo_ocorrencia"],
+                "tipo_ocorrencia_label": group["tipo_ocorrencia_label"],
+                "documentos": sorted(group["documentos"], key=lambda item: item["nome_documento"].lower()),
+            }
+            for _tipo_id, group in sorted(grouped.items(), key=lambda item: item[1]["tipo_nome"].lower())
+            for tipo_nome in [group["tipo_nome"]]
+        ]
+
+        return {"empresa": empresa, "periodos": periodos, "groups": groups}
+
+    def build_control_document_view(
+        self,
+        documento_id: int,
+        start_period_id: int,
+        end_period_id: int,
+    ) -> dict | None:
+        documento = self.documento_repository.get_by_id(documento_id)
+        if not documento:
+            raise ValidationError("Documento nao encontrado.")
+
+        periodos = self._resolve_control_periods(start_period_id, end_period_id)
+        period_ids = [periodo["id"] for periodo in periodos]
+        status_rows = self.status_repository.list_for_documents_and_periods([documento_id], period_ids)
+        statuses = {
+            (row["documento_empresa_id"], row["periodo_id"]): row
+            for row in status_rows
+        }
+        closure_key = self._get_closure_key_map([documento]).get(documento_id)
+        return self._build_document_control_entry(documento, periodos, statuses, closure_key)
+
+    def _normalize_status(self, status: str | None) -> str | None:
+        normalized = None if status is None else str(status).strip()
+        if normalized == "":
+            normalized = None
+        alias_map = {
+            "recebido": "Recebido",
+            "pendente": "Pendente",
+            "encerrado": "Encerrado",
+            "nao cobrar": AUTO_STATUS_NAO_COBRAR,
+            "não cobrar": AUTO_STATUS_NAO_COBRAR,
+        }
+        if normalized is not None:
+            normalized = alias_map.get(normalized.casefold(), normalized)
+        if normalized not in self.valid_statuses:
+            raise ValidationError("Status invalido informado.")
+        return normalized
+
+    def _resolve_control_periods(self, start_period_id: int, end_period_id: int) -> list[dict]:
         start_period = self.periodo_repository.get_by_id(start_period_id)
         end_period = self.periodo_repository.get_by_id(end_period_id)
         if not start_period or not end_period:
@@ -136,110 +227,60 @@ class StatusService:
         )
         if not periodos:
             raise ValidationError("Nao existem periodos gerados para o intervalo informado.")
+        return periodos
 
-        documentos = self.documento_repository.list_by_company(empresa_id)
-        if not documentos:
-            return {"empresa": empresa, "periodos": periodos, "groups": []}
+    def _build_document_control_entry(
+        self,
+        documento: dict,
+        periodos: list[dict],
+        statuses: dict[tuple[int, int], dict],
+        closure_key: int | None,
+    ) -> dict | None:
+        occurrence_rule = normalize_type_occurrence_rule(documento.get("regra_ocorrencia"))
+        cells = []
+        appears_in_any_period = False
 
-        period_ids = [periodo["id"] for periodo in periodos]
-        document_ids = [documento["id"] for documento in documentos]
-
-        status_rows = self.status_repository.list_for_documents_and_periods(document_ids, period_ids)
-        statuses = {
-            (row["documento_empresa_id"], row["periodo_id"]): row
-            for row in status_rows
-        }
-        closures = self._get_closure_key_map(documentos)
-
-        grouped: dict[int, dict] = {}
-        for documento in documentos:
-            closure_key = closures.get(documento["id"])
-            occurrence_rule = normalize_type_occurrence_rule(documento.get("regra_ocorrencia"))
-            cells = []
-            appears_in_any_period = False
-            for periodo in periodos:
-                current_key = month_key(periodo["ano"], periodo["mes"])
-                chargeable = is_chargeable_period(occurrence_rule, periodo["mes"])
-                available = chargeable and (closure_key is None or current_key <= closure_key)
-                status_row = statuses.get((documento["id"], periodo["id"]))
-                display_status = (
-                    AUTO_STATUS_NAO_COBRAR
-                    if not chargeable
-                    else (status_row["status"] or "") if available and status_row else ""
-                )
-                if available or display_status == AUTO_STATUS_NAO_COBRAR:
-                    appears_in_any_period = True
-                cells.append(
-                    {
-                        "periodo_id": periodo["id"],
-                        "available": available,
-                        "status": display_status,
-                        "updated_by_username": status_row["updated_by_username"] if available and status_row else "",
-                        "updated_at": status_row["updated_at"] if available and status_row else None,
-                        "read_only_hint": self._build_read_only_hint(
-                            documento,
-                            periodo,
-                            available,
-                            chargeable,
-                            closure_key,
-                        ),
-                    }
-                )
-
-            if not appears_in_any_period:
-                continue
-
-            group = grouped.setdefault(
-                documento["tipo_documento_id"],
-                {
-                    "tipo_id": documento["tipo_documento_id"],
-                    "tipo_nome": documento["nome_tipo"],
-                    "tipo_ocorrencia": occurrence_rule,
-                    "tipo_ocorrencia_label": get_type_occurrence_label(occurrence_rule),
-                    "documentos": [],
-                }
+        for periodo in periodos:
+            current_key = month_key(periodo["ano"], periodo["mes"])
+            chargeable = is_chargeable_period(occurrence_rule, periodo["mes"])
+            available = chargeable and (closure_key is None or current_key <= closure_key)
+            status_row = statuses.get((documento["id"], periodo["id"]))
+            display_status = (
+                AUTO_STATUS_NAO_COBRAR
+                if not chargeable
+                else (status_row["status"] or "") if available and status_row else ""
             )
-            group["documentos"].append(
+            if available or display_status == AUTO_STATUS_NAO_COBRAR:
+                appears_in_any_period = True
+            cells.append(
                 {
-                    "id": documento["id"],
-                    "nome_documento": documento["nome_documento"],
-                    "tipo_id": documento["tipo_documento_id"],
-                    "tipo_nome": documento["nome_tipo"],
-                    "tipo_ocorrencia": occurrence_rule,
-                    "cells": cells,
+                    "periodo_id": periodo["id"],
+                    "available": available,
+                    "status": display_status,
+                    "updated_by_username": status_row["updated_by_username"] if available and status_row else "",
+                    "updated_at": status_row["updated_at"] if available and status_row else None,
+                    "read_only_hint": self._build_read_only_hint(
+                        documento,
+                        periodo,
+                        available,
+                        chargeable,
+                        closure_key,
+                    ),
                 }
             )
 
-        groups = [
-            {
-                "tipo_id": group["tipo_id"],
-                "tipo_nome": tipo_nome,
-                "tipo_ocorrencia": group["tipo_ocorrencia"],
-                "tipo_ocorrencia_label": group["tipo_ocorrencia_label"],
-                "documentos": sorted(group["documentos"], key=lambda item: item["nome_documento"].lower()),
-            }
-            for _tipo_id, group in sorted(grouped.items(), key=lambda item: item[1]["tipo_nome"].lower())
-            for tipo_nome in [group["tipo_nome"]]
-        ]
+        if not appears_in_any_period:
+            return None
 
-        return {"empresa": empresa, "periodos": periodos, "groups": groups}
-
-    def _normalize_status(self, status: str | None) -> str | None:
-        normalized = None if status is None else str(status).strip()
-        if normalized == "":
-            normalized = None
-        alias_map = {
-            "recebido": "Recebido",
-            "pendente": "Pendente",
-            "encerrado": "Encerrado",
-            "nao cobrar": AUTO_STATUS_NAO_COBRAR,
-            "não cobrar": AUTO_STATUS_NAO_COBRAR,
+        return {
+            "id": documento["id"],
+            "nome_documento": documento["nome_documento"],
+            "tipo_id": documento["tipo_documento_id"],
+            "tipo_nome": documento["nome_tipo"],
+            "tipo_ocorrencia": occurrence_rule,
+            "tipo_ocorrencia_label": get_type_occurrence_label(occurrence_rule),
+            "cells": cells,
         }
-        if normalized is not None:
-            normalized = alias_map.get(normalized.casefold(), normalized)
-        if normalized not in self.valid_statuses:
-            raise ValidationError("Status invalido informado.")
-        return normalized
 
     def _get_closure_key_map(self, documentos: list[dict]) -> dict[int, int]:
         document_ids = [documento["id"] for documento in documentos]

@@ -106,6 +106,8 @@ class EmpresaTab(ttk.Frame):
         self.services = services
         self.on_data_changed = on_data_changed
         self.selected_company_id: int | None = None
+        self.selected_company: dict | None = None
+        self.form_mode = "idle"
         self._selection_syncing = False
 
         self.codigo_var = tk.StringVar()
@@ -122,87 +124,23 @@ class EmpresaTab(ttk.Frame):
         self.summary_value_labels: list[ttk.Label] = []
         self.summary_status_label: ttk.Label | None = None
 
+        self._configure_form_styles()
         self._build_layout()
+
+    def _configure_form_styles(self) -> None:
+        style = ttk.Style(self)
+        style.map(
+            "CompanyForm.TEntry",
+            fieldbackground=[("disabled", "#F3F3F3"), ("!disabled", "#FFFFFF")],
+            foreground=[("disabled", "#6A6A6A"), ("!disabled", "#000000")],
+            bordercolor=[("disabled", "#D0D0D0"), ("!disabled", "#B8B8B8")],
+        )
 
     def _build_layout(self) -> None:
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
-
-        form = ttk.LabelFrame(self, text="Cadastro e manutencao de empresas", padding=12)
-        form.grid(row=0, column=0, sticky="ew", pady=(0, 12))
-
-        identity_row = ttk.Frame(form)
-        identity_row.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        identity_row.columnconfigure(1, weight=1)
-
-        ttk.Label(identity_row, text="Codigo da empresa").grid(row=0, column=0, sticky="w")
-        self.codigo_entry = ttk.Entry(identity_row, textvariable=self.codigo_var, width=18)
-        self.codigo_entry.grid(row=1, column=0, sticky="ew", padx=(0, 10))
-
-        ttk.Label(identity_row, text="Nome da empresa").grid(row=0, column=1, sticky="w")
-        ttk.Entry(identity_row, textvariable=self.nome_var).grid(row=1, column=1, sticky="ew")
-
-        contact_row = ttk.Frame(form)
-        contact_row.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        contact_row.columnconfigure(0, weight=1)
-        contact_row.columnconfigure(1, weight=1)
-
-        ttk.Label(contact_row, text="Email para contato (opcional)").grid(row=0, column=0, sticky="w")
-        ttk.Entry(contact_row, textvariable=self.email_var).grid(row=1, column=0, sticky="ew", padx=(0, 10))
-
-        ttk.Label(contact_row, text="Nome de contato (opcional)").grid(row=0, column=1, sticky="w")
-        ttk.Entry(contact_row, textvariable=self.contato_var).grid(row=1, column=1, sticky="ew")
-
-        observacao_row = ttk.Frame(form)
-        observacao_row.grid(row=2, column=0, sticky="ew", pady=(0, 10))
-        observacao_row.columnconfigure(0, weight=1)
-
-        ttk.Label(
-            observacao_row,
-            text=f"Observacao livre (opcional, max {MAX_COMPANY_OBSERVATION_LENGTH} caracteres)",
-        ).grid(row=0, column=0, sticky="w")
-        self.observacao_text = tk.Text(observacao_row, height=4, wrap="word")
-        self.observacao_text.grid(row=1, column=0, sticky="ew")
-        self.observacao_text.bind("<<Modified>>", self._handle_observacao_modified)
-        ttk.Label(observacao_row, textvariable=self.observacao_counter_var).grid(
-            row=2, column=0, sticky="e", pady=(4, 0)
-        )
-
-        action_row = ttk.Frame(form)
-        action_row.grid(row=3, column=0, sticky="ew")
-        action_row.columnconfigure(0, weight=1)
-        action_row.columnconfigure(1, weight=1)
-
-        self.save_button = ttk.Button(action_row, text="Cadastrar empresa", command=self.save_company)
-        self.save_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        ttk.Button(action_row, text="Novo cadastro", command=self.clear_form).grid(
-            row=0, column=1, sticky="ew"
-        )
-
-        import_row = ttk.Frame(form)
-        import_row.grid(row=4, column=0, sticky="ew", pady=(10, 0))
-        import_row.columnconfigure(1, weight=1)
-
-        ttk.Label(import_row, text="Importacao completa").grid(row=0, column=0, sticky="w", padx=(0, 10))
-        ttk.Button(
-            import_row,
-            text="Importar planilha",
-            command=self.import_full_registrations,
-        ).grid(row=0, column=1, sticky="w")
-
-        import_menu_button = ttk.Menubutton(import_row, text="Layout e modelo")
-        import_menu = tk.Menu(import_menu_button, tearoff=False)
-        import_menu.add_command(label="Ver layout", command=self.show_complete_import_layout)
-        import_menu.add_command(label="Baixar modelo", command=self.download_complete_import_template)
-        import_menu_button["menu"] = import_menu
-        import_menu_button.grid(row=0, column=2, sticky="e")
-
-        form.columnconfigure(0, weight=1)
-
         consultation = ttk.LabelFrame(self, text="Detalhes do cadastro da empresa", padding=12)
-        consultation.grid(row=1, column=0, sticky="nsew")
+        consultation.grid(row=0, column=0, sticky="ew", pady=(0, 12))
         consultation.columnconfigure(0, weight=1)
-        consultation.rowconfigure(2, weight=1)
 
         self.company_selector = CompanySelector(
             consultation,
@@ -233,23 +171,91 @@ class EmpresaTab(ttk.Frame):
         summary_actions.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         summary_actions.columnconfigure(0, weight=1)
         summary_actions.columnconfigure(1, weight=1)
+        summary_actions.columnconfigure(2, weight=1)
 
-        self.inactivate_button = ttk.Button(
-            summary_actions,
-            text="Inativar",
-            command=lambda: self.set_selected_active(False),
-        )
-        self.inactivate_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self.reactivate_button = ttk.Button(
-            summary_actions,
-            text="Reativar",
-            command=lambda: self.set_selected_active(True),
-        )
-        self.reactivate_button.grid(row=0, column=1, sticky="ew")
+        self.edit_button = ttk.Button(summary_actions, text="Editar cadastro", command=self.start_edit_company)
+        self.edit_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.toggle_active_button = ttk.Button(summary_actions, command=self.toggle_selected_active)
+        self.toggle_active_button.grid(row=0, column=1, sticky="ew", padx=(0, 8))
         self.delete_button = ttk.Button(summary_actions, text="Excluir", command=self.delete_company)
-        self.delete_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        self.delete_button.grid(row=0, column=2, sticky="ew")
 
-        self._set_selection_actions(enabled=False)
+        form = ttk.LabelFrame(self, text="Cadastro e manutencao de empresas", padding=12)
+        form.grid(row=1, column=0, sticky="ew")
+
+        identity_row = ttk.Frame(form)
+        identity_row.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        identity_row.columnconfigure(1, weight=1)
+
+        ttk.Label(identity_row, text="Codigo da empresa").grid(row=0, column=0, sticky="w")
+        self.codigo_entry = ttk.Entry(identity_row, textvariable=self.codigo_var, width=18, style="CompanyForm.TEntry")
+        self.codigo_entry.grid(row=1, column=0, sticky="ew", padx=(0, 10))
+
+        ttk.Label(identity_row, text="Nome da empresa").grid(row=0, column=1, sticky="w")
+        self.nome_entry = ttk.Entry(identity_row, textvariable=self.nome_var, style="CompanyForm.TEntry")
+        self.nome_entry.grid(row=1, column=1, sticky="ew")
+
+        contact_row = ttk.Frame(form)
+        contact_row.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        contact_row.columnconfigure(0, weight=1)
+        contact_row.columnconfigure(1, weight=1)
+
+        ttk.Label(contact_row, text="Email para contato (opcional)").grid(row=0, column=0, sticky="w")
+        self.email_entry = ttk.Entry(contact_row, textvariable=self.email_var, style="CompanyForm.TEntry")
+        self.email_entry.grid(row=1, column=0, sticky="ew", padx=(0, 10))
+
+        ttk.Label(contact_row, text="Nome de contato (opcional)").grid(row=0, column=1, sticky="w")
+        self.contato_entry = ttk.Entry(contact_row, textvariable=self.contato_var, style="CompanyForm.TEntry")
+        self.contato_entry.grid(row=1, column=1, sticky="ew")
+
+        observacao_row = ttk.Frame(form)
+        observacao_row.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        observacao_row.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            observacao_row,
+            text=f"Observacao livre (opcional, max {MAX_COMPANY_OBSERVATION_LENGTH} caracteres)",
+        ).grid(row=0, column=0, sticky="w")
+        self.observacao_text = tk.Text(observacao_row, height=4, wrap="word")
+        self.observacao_text.grid(row=1, column=0, sticky="ew")
+        self.observacao_text.bind("<<Modified>>", self._handle_observacao_modified)
+        ttk.Label(observacao_row, textvariable=self.observacao_counter_var).grid(
+            row=2, column=0, sticky="e", pady=(4, 0)
+        )
+
+        action_row = ttk.Frame(form)
+        action_row.grid(row=3, column=0, sticky="ew")
+        action_row.columnconfigure(0, weight=1)
+        action_row.columnconfigure(1, weight=1)
+        action_row.columnconfigure(2, weight=1)
+
+        self.new_button = ttk.Button(action_row, text="Novo cadastro", command=self.start_new_company)
+        self.new_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.save_button = ttk.Button(action_row, text="Salvar", command=self.save_company)
+        self.save_button.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        self.cancel_button = ttk.Button(action_row, text="Cancelar", command=self.cancel_company_edit)
+        self.cancel_button.grid(row=0, column=2, sticky="ew")
+
+        import_row = ttk.Frame(form)
+        import_row.grid(row=4, column=0, sticky="ew", pady=(10, 0))
+        import_row.columnconfigure(1, weight=1)
+
+        ttk.Label(import_row, text="Importacao completa").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ttk.Button(
+            import_row,
+            text="Importar planilha",
+            command=self.import_full_registrations,
+        ).grid(row=0, column=1, sticky="w")
+
+        import_menu_button = ttk.Menubutton(import_row, text="Layout e modelo")
+        import_menu = tk.Menu(import_menu_button, tearoff=False)
+        import_menu.add_command(label="Ver layout", command=self.show_complete_import_layout)
+        import_menu.add_command(label="Baixar modelo", command=self.download_complete_import_template)
+        import_menu_button["menu"] = import_menu
+        import_menu_button.grid(row=0, column=2, sticky="e")
+
+        form.columnconfigure(0, weight=1)
+        self._set_form_mode("idle")
 
     def _build_summary_row(self, parent: ttk.LabelFrame, row: int, label: str, variable: tk.StringVar) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="nw", padx=(0, 10), pady=(0, 6))
@@ -291,31 +297,29 @@ class EmpresaTab(ttk.Frame):
             self._selection_syncing = False
 
     def _populate_company(self, company: dict) -> None:
+        self.selected_company = company
         self.selected_company_id = company["id"]
         self.codigo_var.set(str(company["codigo_empresa"]))
         self.nome_var.set(company["nome_empresa"])
         self.email_var.set(company.get("email_contato") or "")
         self.contato_var.set(company.get("nome_contato") or "")
         self._set_observacao_text(company.get("observacao"))
-        self.codigo_entry.configure(state="disabled")
-        self.save_button.configure(text="Salvar alteracoes")
         self._update_company_summary(company)
-        self._set_selection_actions(enabled=True)
+        self._set_form_mode("view")
 
     def clear_form(self) -> None:
         self._clear_current_company(sync_selector=True)
 
     def _clear_current_company(self, *, sync_selector: bool = False) -> None:
+        self.selected_company = None
         self.selected_company_id = None
         self.codigo_var.set("")
         self.nome_var.set("")
         self.email_var.set("")
         self.contato_var.set("")
         self._set_observacao_text("")
-        self.codigo_entry.configure(state="normal")
-        self.save_button.configure(text="Cadastrar empresa")
         self._update_company_summary(None)
-        self._set_selection_actions(enabled=False)
+        self._set_form_mode("idle")
 
         if self._selection_syncing:
             return
@@ -344,22 +348,28 @@ class EmpresaTab(ttk.Frame):
         self.info_observacao_var.set(company.get("observacao") or "-")
         self.info_situacao_var.set("Empresa ativa." if company["ativa"] else "Empresa inativa.")
 
-    def _set_selection_actions(self, *, enabled: bool) -> None:
-        state = "normal" if enabled else "disabled"
-        self.inactivate_button.configure(state=state)
-        self.reactivate_button.configure(state=state)
-        self.delete_button.configure(state=state)
-
     def _get_observacao_text(self) -> str:
         return self.observacao_text.get("1.0", "end-1c")
 
     def _set_observacao_text(self, value: str | None) -> None:
+        previous_state = str(self.observacao_text.cget("state"))
+        if previous_state == "disabled":
+            self.observacao_text.configure(state="normal")
         self.observacao_text.delete("1.0", "end")
         normalized_value = str(value or "")[:MAX_COMPANY_OBSERVATION_LENGTH]
         if normalized_value:
             self.observacao_text.insert("1.0", normalized_value)
         self._update_observacao_counter()
         self.observacao_text.edit_modified(False)
+        if previous_state == "disabled":
+            self.observacao_text.configure(state="disabled")
+
+    def _apply_observacao_visual_state(self, editable: bool) -> None:
+        self.observacao_text.configure(
+            bg="#FFFFFF" if editable else "#F3F3F3",
+            fg="#000000" if editable else "#6A6A6A",
+            insertbackground="#000000",
+        )
 
     def _update_observacao_counter(self) -> None:
         self.observacao_counter_var.set(
@@ -376,9 +386,13 @@ class EmpresaTab(ttk.Frame):
         self.observacao_text.edit_modified(False)
 
     def save_company(self) -> None:
+        if self.form_mode not in {"new", "edit"}:
+            messagebox.showwarning("Empresas", "Clique em Novo ou Editar para habilitar o cadastro.", parent=self)
+            return
+
         target_company_id = self.selected_company_id
         try:
-            if self.selected_company_id:
+            if self.form_mode == "edit" and self.selected_company_id:
                 self.services.empresa_service.update_empresa(
                     self.selected_company_id,
                     self.nome_var.get(),
@@ -406,11 +420,12 @@ class EmpresaTab(ttk.Frame):
         else:
             self.clear_form()
 
-    def set_selected_active(self, active: bool) -> None:
+    def toggle_selected_active(self) -> None:
         if not self.selected_company_id:
             messagebox.showwarning("Empresas", "Selecione uma empresa para continuar.", parent=self)
             return
 
+        active = not bool(self.selected_company and self.selected_company.get("ativa"))
         self.services.empresa_service.set_empresa_ativa(self.selected_company_id, active)
         estado = "reativada" if active else "inativada"
         messagebox.showinfo("Empresas", f"Empresa {estado} com sucesso.", parent=self)
@@ -434,6 +449,60 @@ class EmpresaTab(ttk.Frame):
         self.clear_form()
         self.on_data_changed()
         messagebox.showinfo("Empresas", "Empresa excluida com sucesso.", parent=self)
+
+    def start_new_company(self) -> None:
+        self.clear_form()
+        self._set_form_mode("new")
+
+    def start_edit_company(self) -> None:
+        if not self.selected_company_id:
+            messagebox.showwarning("Empresas", "Selecione uma empresa para editar.", parent=self)
+            return
+
+        company = self.services.empresa_service.get_empresa(self.selected_company_id)
+        self._populate_company(company)
+        self._set_form_mode("edit")
+
+    def cancel_company_edit(self) -> None:
+        if self.selected_company_id:
+            company = self.services.empresa_service.get_empresa(self.selected_company_id)
+            self._populate_company(company)
+            return
+        self.clear_form()
+
+    def _set_form_mode(self, mode: str) -> None:
+        self.form_mode = mode
+        editable = mode in {"new", "edit"}
+        has_selection = self.selected_company_id is not None
+
+        self.codigo_entry.configure(state="normal" if mode == "new" else "disabled")
+        self.nome_entry.configure(state="normal" if editable else "disabled")
+        self.email_entry.configure(state="normal" if editable else "disabled")
+        self.contato_entry.configure(state="normal" if editable else "disabled")
+        self.observacao_text.configure(state="normal" if editable else "disabled")
+        self._apply_observacao_visual_state(editable)
+        self.save_button.configure(state="normal" if editable else "disabled")
+        self.cancel_button.configure(state="normal" if editable else "disabled")
+        self.new_button.configure(state="disabled" if editable else "normal")
+        self.edit_button.configure(state="normal" if has_selection and not editable else "disabled")
+        self.delete_button.configure(state="normal" if has_selection and not editable else "disabled")
+        self._update_company_action_buttons()
+
+    def _update_company_action_buttons(self) -> None:
+        has_selection = self.selected_company_id is not None
+        editable = self.form_mode in {"new", "edit"}
+        self.edit_button.configure(state="normal" if has_selection and not editable else "disabled")
+        self.delete_button.configure(state="normal" if has_selection and not editable else "disabled")
+
+        if not has_selection:
+            self.toggle_active_button.configure(text="Inativar", state="disabled")
+            return
+
+        is_active = bool(self.selected_company and self.selected_company.get("ativa"))
+        self.toggle_active_button.configure(
+            text="Inativar" if is_active else "Reativar",
+            state="normal" if not editable else "disabled",
+        )
 
     def show_complete_import_layout(self) -> None:
         dialog = CadastroCompletoImportLayoutDialog(self, self.services.import_service)

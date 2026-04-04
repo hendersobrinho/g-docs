@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
 import unittest
@@ -227,10 +228,15 @@ class ApplicationServiceTests(unittest.TestCase):
 
         self.assertEqual(result["rows"], 1)
         self.assertEqual(worksheet.max_row, 2)
-        self.assertEqual(worksheet["A2"].value, 111)
-        self.assertEqual(worksheet["B2"].value, "Empresa Excel")
-        self.assertEqual(worksheet["G2"].value, "Contrato Social")
-        self.assertEqual(worksheet["H2"].value, "Pendente")
+        self.assertEqual(worksheet.max_column, 4)
+        self.assertEqual(worksheet["A1"].value, "Empresa")
+        self.assertEqual(worksheet["B1"].value, "Periodo")
+        self.assertEqual(worksheet["C1"].value, "Documento pendente")
+        self.assertEqual(worksheet["D1"].value, "Status")
+        self.assertEqual(worksheet["A2"].value, "Empresa Excel")
+        self.assertEqual(worksheet["B2"].value, "03/2026 - Marco")
+        self.assertEqual(worksheet["C2"].value, "Contrato Social")
+        self.assertEqual(worksheet["D2"].value, "Pendente")
 
     def test_backup_restore_recovers_previous_database_state(self) -> None:
         self.empresa_service.create_empresa(113, "Empresa Antes do Backup")
@@ -245,6 +251,48 @@ class ApplicationServiceTests(unittest.TestCase):
 
         self.assertIn(113, codigos)
         self.assertNotIn(114, codigos)
+
+    def test_database_manager_applies_sqlite_pragmas(self) -> None:
+        with self.empresa_repository.db_manager.connect() as connection:
+            foreign_keys = int(connection.execute("PRAGMA foreign_keys").fetchone()[0])
+            busy_timeout = int(connection.execute("PRAGMA busy_timeout").fetchone()[0])
+            journal_mode = str(connection.execute("PRAGMA journal_mode").fetchone()[0]).lower()
+            synchronous = int(connection.execute("PRAGMA synchronous").fetchone()[0])
+
+        self.assertEqual(foreign_keys, 1)
+        self.assertEqual(busy_timeout, 5000)
+        self.assertEqual(journal_mode, "wal")
+        self.assertEqual(synchronous, 1)
+
+    def test_database_maintenance_service_optimize_database_returns_summary(self) -> None:
+        self.empresa_service.create_empresa(401, "Empresa Otimizada")
+
+        result = self.database_maintenance_service.optimize_database()
+
+        self.assertTrue(result["optimized"])
+        self.assertGreater(result["page_count"], 0)
+        self.assertGreaterEqual(result["free_pages"], 0)
+
+    def test_repository_batch_queries_handle_large_repeated_id_lists(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(402, "Empresa Lote")
+        tipo_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
+        documento_id = self.documento_service.create_documento(empresa_id, tipo_id, "Banco Lote")
+        self.periodo_service.generate_year(2026)
+        janeiro = next(
+            periodo
+            for periodo in self.periodo_service.list_periodos()
+            if periodo["ano"] == 2026 and periodo["mes"] == 1
+        )
+        self.status_service.update_status(documento_id, janeiro["id"], "Pendente")
+
+        empresas = self.empresa_repository.list_by_ids([empresa_id] * 1200)
+        documentos = self.documento_repository.list_by_company_ids([empresa_id] * 1200)
+        statuses = self.status_repository.list_for_documents_and_periods([documento_id] * 1200, [janeiro["id"]])
+
+        self.assertEqual(len(empresas), 1)
+        self.assertEqual(len(documentos), 1)
+        self.assertEqual(len(statuses), 1)
+        self.assertEqual(statuses[0]["status"], "Pendente")
 
     @unittest.skipIf(load_workbook is None, "openpyxl nao esta disponivel no ambiente de teste")
     def test_import_service_exports_empresa_template(self) -> None:
@@ -358,6 +406,40 @@ class ApplicationServiceTests(unittest.TestCase):
         documento = self.documento_service.get_documento(documento_id)
 
         self.assertEqual(documento["meios_recebimento"], "Portal, Email")
+
+    def test_document_name_suggestions_only_use_system_standard_names(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(122, "Empresa Sugestoes")
+        tipo_extrato_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
+        tipo_contrato_id = self.tipo_service.get_or_create_tipo("Contratos")["id"]
+
+        self.documento_service.create_documento(empresa_id, tipo_extrato_id, "Banco Importado")
+        self.assertEqual(self.documento_service.list_document_name_suggestions(tipo_extrato_id), [])
+
+        self.documento_service.create_system_document_name(tipo_extrato_id, "Banco Padrao")
+        self.documento_service.create_system_document_name(tipo_contrato_id, "Contrato Social")
+
+        self.assertEqual(
+            self.documento_service.list_document_name_suggestions(tipo_extrato_id),
+            ["Banco Padrao"],
+        )
+        self.assertEqual(
+            self.documento_service.list_document_name_suggestions(search="Contrato"),
+            ["Contrato Social"],
+        )
+
+    def test_custom_delivery_methods_do_not_enter_system_method_list(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(123, "Empresa Meio Livre")
+        tipo_id = self.tipo_service.get_or_create_tipo("Comprovantes")["id"]
+
+        self.documento_service.create_documento(
+            empresa_id,
+            tipo_id,
+            "Portal Fiscal",
+            ["Portal do cliente"],
+        )
+
+        methods = [item["nome_meio"] for item in self.delivery_method_service.list_methods()]
+        self.assertNotIn("Portal do cliente", methods)
 
     def test_schema_migrates_legacy_company_delivery_methods_to_documents(self) -> None:
         empresa_id = self.empresa_repository.create(117, "Empresa Legada", "Email, Onvio")
@@ -715,15 +797,12 @@ class ApplicationServiceTests(unittest.TestCase):
         self.assertEqual(documentos[0]["nome_tipo"], "Extratos CC")
 
     def test_document_service_lists_reusable_document_names_by_type(self) -> None:
-        empresa_a_id = self.empresa_service.create_empresa(405, "Empresa A")
-        empresa_b_id = self.empresa_service.create_empresa(406, "Empresa B")
         tipo_extrato_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
         tipo_contrato_id = self.tipo_service.get_or_create_tipo("Contratos")["id"]
 
-        self.documento_service.create_documento(empresa_a_id, tipo_extrato_id, "Banco do Brasil")
-        self.documento_service.create_documento(empresa_b_id, tipo_extrato_id, "Banco do Brasil")
-        self.documento_service.create_documento(empresa_b_id, tipo_extrato_id, "Bradesco")
-        self.documento_service.create_documento(empresa_a_id, tipo_contrato_id, "Contrato Social")
+        self.documento_service.create_system_document_name(tipo_extrato_id, "Banco do Brasil")
+        self.documento_service.create_system_document_name(tipo_extrato_id, "Bradesco")
+        self.documento_service.create_system_document_name(tipo_contrato_id, "Contrato Social")
 
         extrato_names = self.documento_service.list_document_name_suggestions(tipo_extrato_id)
         contrato_names = self.documento_service.list_document_name_suggestions(tipo_contrato_id)
@@ -999,10 +1078,32 @@ class ApplicationServiceTests(unittest.TestCase):
     def test_auth_service_can_authenticate_with_remembered_session(self) -> None:
         token = self.auth_service.create_remembered_session(self.session_service.get_user_id())
 
-        user = self.auth_service.authenticate_with_remembered_session(token)
+        user, refreshed_token = self.auth_service.authenticate_with_remembered_session(token)
 
         self.assertEqual(user["username"], "admin")
         self.assertEqual(user["tipo_usuario"], "admin")
+        self.assertNotEqual(token, refreshed_token)
+
+        with self.assertRaises(ValidationError):
+            self.auth_service.authenticate_with_remembered_session(token)
+
+    def test_expired_remembered_session_cannot_authenticate(self) -> None:
+        token = self.auth_service.create_remembered_session(self.session_service.get_user_id())
+        selector = token.split(".", 1)[0]
+        expired_timestamp = (datetime.now(timezone.utc) - timedelta(days=61)).strftime("%Y-%m-%d %H:%M:%S")
+
+        with self.remembered_session_repository.db_manager.connect() as connection:
+            connection.execute(
+                """
+                UPDATE sessoes_lembradas
+                SET criado_em = ?, ultimo_uso_em = ?
+                WHERE selector = ?
+                """,
+                (expired_timestamp, expired_timestamp, selector),
+            )
+
+        with self.assertRaises(ValidationError):
+            self.auth_service.authenticate_with_remembered_session(token)
 
     def test_revoked_remembered_session_cannot_authenticate(self) -> None:
         token = self.auth_service.create_remembered_session(self.session_service.get_user_id())
@@ -1020,6 +1121,17 @@ class ApplicationServiceTests(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             self.auth_service.authenticate_with_remembered_session(token)
+
+    def test_restore_backup_rejects_incompatible_sqlite_database(self) -> None:
+        invalid_backup = Path(self.temp_dir.name) / "outro_sqlite.db"
+
+        import sqlite3
+
+        with sqlite3.connect(invalid_backup) as connection:
+            connection.execute("CREATE TABLE exemplo (id INTEGER PRIMARY KEY)")
+
+        with self.assertRaises(ValidationError):
+            self.database_maintenance_service.restore_backup(invalid_backup)
 
     def test_inactive_user_cannot_login(self) -> None:
         user_id = self.user_service.create_user("maria", "123456", "comum", ativo=True)
