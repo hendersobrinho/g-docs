@@ -51,18 +51,25 @@ if not defined ICON_PYTHON (
 
 set "RUN_TESTS=%RUN_TESTS%"
 if not defined RUN_TESTS set "RUN_TESTS=1"
+set "DIST_DIR=dist\G-docs"
 
 if not "%RUN_TESTS%"=="0" (
     echo Executando testes antes do build...
     "%BUILD_PYTHON%" -m unittest tests.test_services tests.test_storage tests.test_resources tests.test_display tests.test_release_files
-    if errorlevel 1 exit /b %errorlevel%
+    if errorlevel 1 exit /b 1
 )
 
+echo Gerando icones de release...
 "%ICON_PYTHON%" scripts\generate_icons.py
 if errorlevel 1 exit /b %errorlevel%
 
+echo Executando PyInstaller...
 "%BUILD_PYTHON%" -m PyInstaller --noconfirm --clean documentos_empresa_app.spec
 if errorlevel 1 exit /b %errorlevel%
+if not exist "%DIST_DIR%\" (
+    echo O build terminou sem gerar a pasta "%DIST_DIR%".
+    exit /b 1
+)
 
 for /f %%i in ('"%BUILD_PYTHON%" -c "from documentos_empresa_app import __version__; print(__version__)"') do set "APP_VERSION=%%i"
 if not defined APP_VERSION (
@@ -74,11 +81,12 @@ if not exist "dist_release" mkdir "dist_release"
 set "ZIP_PATH=dist_release\G-docs-win64-v%APP_VERSION%.zip"
 if exist "%ZIP_PATH%" del /f /q "%ZIP_PATH%"
 
-powershell -NoProfile -Command "Compress-Archive -Path 'dist\G-docs\*' -DestinationPath '%ZIP_PATH%' -Force"
+echo Empacotando arquivos finais...
+powershell -NoProfile -Command "Compress-Archive -Path '%DIST_DIR%\*' -DestinationPath '%ZIP_PATH%' -Force"
 if errorlevel 1 exit /b %errorlevel%
 
 echo.
-echo Build Windows concluido em: %cd%\dist\G-docs
+echo Build Windows concluido em: %cd%\%DIST_DIR%
 echo Arquivo de distribuicao: %cd%\%ZIP_PATH%
 echo Icone de empacotamento: assets\icons\icon.ico
 
@@ -87,7 +95,7 @@ if not errorlevel 1 (
     echo.
     echo Inno Setup detectado. Gerando instalador...
     iscc installer\G-docs.iss
-    if errorlevel 1 exit /b %errorlevel%
+    if errorlevel 1 exit /b 1
 ) else (
     echo.
     echo Inno Setup nao encontrado no PATH.
