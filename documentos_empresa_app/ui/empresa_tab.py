@@ -30,11 +30,12 @@ class CadastroCompletoImportLayoutDialog(tk.Toplevel):
             self,
             text=(
                 "Use uma linha por documento. As quatro primeiras colunas identificam a empresa, "
-                "a quinta informa o meio de recebimento do documento, as duas seguintes cadastram "
-                "o documento e o tipo, e a ultima registra a observacao da empresa. Para importar "
-                "so a empresa, deixe as colunas de documento em branco. Para continuar a mesma "
-                "empresa em linhas seguidas, voce pode deixar as quatro primeiras colunas em branco "
-                "depois da primeira linha."
+                "depois vem nome do documento, meio de recebimento, tipo e observacao da empresa. "
+                "As colunas de meses no final sao opcionais e aceitam OK para Recebido, P para "
+                "Pendente, X para Nao cobrar e vazio para nao preencher nada. Para importar so a "
+                "empresa, deixe as colunas de documento em branco. Para continuar a mesma empresa "
+                "em linhas seguidas, voce pode deixar as quatro primeiras colunas em branco depois "
+                "da primeira linha."
             ),
             justify="left",
             wraplength=760,
@@ -78,8 +79,8 @@ class CadastroCompletoImportLayoutDialog(tk.Toplevel):
                 ),
             )
 
-        sample_values = [item["example"] for item in layout]
-        sample_text = " | ".join(sample_values)
+        sample_values = [item["example"] for item in layout[:11]]
+        sample_text = " | ".join(sample_values) + " | ..."
         ttk.Label(
             self,
             text=(
@@ -461,6 +462,7 @@ class EmpresaTab(ttk.Frame):
             f'Empresas reutilizadas: {result["companies_reused"]}',
             f'Tipos criados: {result["types_created"]}',
             f'Documentos importados: {result["documents_imported"]}',
+            f'Status importados: {result["statuses_imported"]}',
             f'Linhas com falha: {result["failed"]}',
         ]
         if result["errors"]:

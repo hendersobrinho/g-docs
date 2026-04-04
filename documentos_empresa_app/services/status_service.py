@@ -36,7 +36,7 @@ class StatusService:
         self.status_repository = status_repository
         self.audit_service = audit_service
         self.session_service = session_service
-        self.valid_statuses = {"Recebido", "Pendente", "Encerrado", "", None}
+        self.valid_statuses = {"Recebido", "Pendente", "Encerrado", AUTO_STATUS_NAO_COBRAR, "", None}
 
     def update_status(self, documento_id: int, periodo_id: int, status: str | None) -> None:
         normalized = self._normalize_status(status)
@@ -55,7 +55,11 @@ class StatusService:
                 return
 
             occurrence_rule = normalize_type_occurrence_rule(documento.get("regra_ocorrencia"))
-            if not is_chargeable_period(occurrence_rule, periodo["mes"]) and normalized not in ("", None):
+            if not is_chargeable_period(occurrence_rule, periodo["mes"]) and normalized not in (
+                "",
+                None,
+                AUTO_STATUS_NAO_COBRAR,
+            ):
                 raise ValidationError(
                     (
                         f'O tipo "{documento["nome_tipo"]}" esta configurado como '
@@ -67,7 +71,7 @@ class StatusService:
             closure_key = self._get_closure_key_map([documento]).get(documento_id)
             target_key = month_key(periodo["ano"], periodo["mes"])
             if closure_key is not None:
-                if target_key > closure_key and normalized not in ("", None):
+                if target_key > closure_key and normalized not in ("", None, AUTO_STATUS_NAO_COBRAR):
                     raise ValidationError(
                         "Esse documento ja foi encerrado em um mes anterior e nao pode receber status depois disso."
                     )
@@ -95,7 +99,7 @@ class StatusService:
 
             self._log_status_change(empresa, documento, periodo, previous_status, normalized)
             for removed_status in future_statuses:
-                if removed_status["status"] in ("", None):
+                if removed_status["status"] in ("", None, AUTO_STATUS_NAO_COBRAR):
                     continue
                 self._log_status_change(
                     empresa,
@@ -224,6 +228,15 @@ class StatusService:
         normalized = None if status is None else str(status).strip()
         if normalized == "":
             normalized = None
+        alias_map = {
+            "recebido": "Recebido",
+            "pendente": "Pendente",
+            "encerrado": "Encerrado",
+            "nao cobrar": AUTO_STATUS_NAO_COBRAR,
+            "não cobrar": AUTO_STATUS_NAO_COBRAR,
+        }
+        if normalized is not None:
+            normalized = alias_map.get(normalized.casefold(), normalized)
         if normalized not in self.valid_statuses:
             raise ValidationError("Status invalido informado.")
         return normalized

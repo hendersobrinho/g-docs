@@ -53,7 +53,7 @@ TYPE_OCCURRENCE_ALLOWED_MONTHS = {
     TYPE_OCCURRENCE_ANUAL_JANEIRO: frozenset({1}),
 }
 AUTO_STATUS_NAO_COBRAR = "Nao cobrar"
-STATUS_OPTIONS = ("", "Recebido", "Pendente", "Encerrado")
+STATUS_OPTIONS = ("", "Recebido", "Pendente", AUTO_STATUS_NAO_COBRAR, "Encerrado")
 STATUS_COLORS = {
     "": "#FFFFFF",
     "Recebido": "#D9F2D9",

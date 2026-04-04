@@ -96,7 +96,13 @@ def build_application_services(db_path: str | Path, session_service: SessionServ
         audit_service=audit_service,
         session_service=session,
     )
-    import_service = ImportService(empresa_service, tipo_service, documento_service)
+    import_service = ImportService(
+        empresa_service,
+        tipo_service,
+        documento_service,
+        periodo_service,
+        status_service,
+    )
     database_maintenance_service = DatabaseMaintenanceService(db_manager)
     auth_service = AuthService(usuario_repository, remembered_session_repository)
     user_service = UserService(

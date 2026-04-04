@@ -104,6 +104,8 @@ class ApplicationServiceTests(unittest.TestCase):
             self.empresa_service,
             self.tipo_service,
             self.documento_service,
+            self.periodo_service,
+            self.status_service,
         )
         self.database_maintenance_service = DatabaseMaintenanceService(db_manager)
         self.auth_service = AuthService(self.usuario_repository, self.remembered_session_repository)
@@ -277,12 +279,18 @@ class ApplicationServiceTests(unittest.TestCase):
         workbook = load_workbook(file_path)
         worksheet = workbook["Cadastros completos"]
 
-        self.assertEqual(result["columns"], 8)
+        self.assertEqual(result["columns"], 20)
         self.assertEqual(worksheet["A1"].value, "Codigo da empresa")
-        self.assertEqual(worksheet["E1"].value, "Meios de recebimento do documento")
-        self.assertEqual(worksheet["F1"].value, "Nome do documento")
+        self.assertEqual(worksheet["E1"].value, "Nome do documento")
+        self.assertEqual(worksheet["F1"].value, "Meio de recebimento")
         self.assertEqual(worksheet["H1"].value, "Observacao")
+        self.assertEqual(worksheet["I1"].value, "Janeiro")
+        self.assertEqual(worksheet["J1"].value, "Fevereiro")
+        self.assertEqual(worksheet["K1"].value, "Marco")
         self.assertEqual(worksheet["H2"].value, "Prefere retorno ate o dia 10")
+        self.assertEqual(worksheet["I2"].value, "OK")
+        self.assertEqual(worksheet["J2"].value, "P")
+        self.assertEqual(worksheet["K2"].value, "X")
 
     def test_empresa_service_accepts_integer_like_numeric_codes(self) -> None:
         empresa_id = self.empresa_service.create_empresa("101.0", "Empresa Decimal")
@@ -361,6 +369,38 @@ class ApplicationServiceTests(unittest.TestCase):
         documento = self.documento_service.get_documento(documento_id)
 
         self.assertEqual(documento["meios_recebimento"], "Email, Onvio")
+
+    def test_schema_migrates_legacy_status_table_to_allow_nao_cobrar(self) -> None:
+        legacy_db_path = Path(self.temp_dir.name) / "legacy_status.db"
+        legacy_db_manager = DatabaseManager(legacy_db_path)
+
+        with legacy_db_manager.connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE status_documento_mensal (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    documento_empresa_id INTEGER NOT NULL,
+                    periodo_id INTEGER NOT NULL,
+                    status TEXT NULL CHECK (status IN ('Recebido', 'Pendente', 'Encerrado') OR status IS NULL),
+                    FOREIGN KEY (documento_empresa_id) REFERENCES documentos_empresa(id) ON DELETE CASCADE,
+                    FOREIGN KEY (periodo_id) REFERENCES periodos(id) ON DELETE CASCADE,
+                    CONSTRAINT uq_status UNIQUE (documento_empresa_id, periodo_id)
+                )
+                """
+            )
+
+        initialize_schema(legacy_db_manager)
+
+        with legacy_db_manager.connect() as connection:
+            table_sql = connection.execute(
+                """
+                SELECT sql
+                FROM sqlite_master
+                WHERE type = 'table' AND name = 'status_documento_mensal'
+                """
+            ).fetchone()["sql"]
+
+        self.assertIn("'Nao cobrar'", table_sql)
 
     def test_empresa_service_can_save_company_directory(self) -> None:
         empresa_id = self.empresa_service.create_empresa(108, "Empresa Pasta")
@@ -705,6 +745,7 @@ class ApplicationServiceTests(unittest.TestCase):
             def __init__(self, rows):
                 self.active = FakeWorksheet(rows)
 
+        self.periodo_service.generate_year(2026)
         workbook = FakeWorkbook(
             [
                 (
@@ -712,31 +753,40 @@ class ApplicationServiceTests(unittest.TestCase):
                     "nome_empresa",
                     "email_contato",
                     "nome_contato",
-                    "meios_recebimento",
                     "nome_documento",
-                    "nome_tipo",
-                    "observacao",
+                    "meio de recebimento",
+                    "tipos",
+                    "observacoes",
+                    "janeiro",
+                    "fevereiro",
+                    "marco",
                 ),
                 (
                     601,
                     "Empresa Importacao Completa A",
                     "empresa.a@teste.com",
                     "Ana",
-                    "Email",
                     "Banco A",
+                    "Email",
                     "Extratos CC",
                     "Observacao A",
+                    "OK",
+                    "P",
+                    "X",
                 ),
-                (None, None, None, None, "Portal", "Relatorio Gerencial", "Balancetes", None),
+                (None, None, None, None, "Relatorio Gerencial", "Portal", "Balancetes", None, None, None, None),
                 (
                     602,
                     "Empresa Importacao Completa B",
                     "empresa.b@teste.com",
                     "Bruno",
-                    "Onvio",
-                    "Portal Fiscal",
-                    "Comprovantes",
+                    None,
+                    None,
+                    None,
                     "Observacao B",
+                    None,
+                    None,
+                    None,
                 ),
             ]
         )
@@ -749,13 +799,24 @@ class ApplicationServiceTests(unittest.TestCase):
         documentos_a = self.documento_service.list_documentos_empresa(empresa_a["id"])
         documentos_b = self.documento_service.list_documentos_empresa(empresa_b["id"])
         tipo_balancetes = self.tipo_service.get_or_create_tipo("Balancetes")
+        periodos = self.periodo_service.list_periodos()
+        janeiro = next(item for item in periodos if item["ano"] == 2026 and item["mes"] == 1)
+        marco = next(item for item in periodos if item["ano"] == 2026 and item["mes"] == 3)
+        controle = self.status_service.build_control_view(empresa_a["id"], janeiro["id"], marco["id"])
+        banco_a = next(
+            doc
+            for group in controle["groups"]
+            for doc in group["documentos"]
+            if doc["nome_documento"] == "Banco A"
+        )
 
         self.assertEqual(result["processed_rows"], 3)
         self.assertEqual(result["companies_created"], 2)
         self.assertEqual(result["companies_updated"], 0)
         self.assertEqual(result["companies_reused"], 0)
         self.assertEqual(result["types_created"], 1)
-        self.assertEqual(result["documents_imported"], 3)
+        self.assertEqual(result["documents_imported"], 2)
+        self.assertEqual(result["statuses_imported"], 3)
         self.assertEqual(result["failed"], 0)
         self.assertEqual(empresa_a["email_contato"], "empresa.a@teste.com")
         self.assertEqual(empresa_a["observacao"], "Observacao A")
@@ -764,10 +825,8 @@ class ApplicationServiceTests(unittest.TestCase):
             [(doc["nome_documento"], doc["meios_recebimento"], doc["nome_tipo"]) for doc in documentos_a],
             [("Relatorio Gerencial", "Portal", "Balancetes"), ("Banco A", "Email", "Extratos CC")],
         )
-        self.assertEqual(
-            [(doc["nome_documento"], doc["meios_recebimento"]) for doc in documentos_b],
-            [("Portal Fiscal", "Onvio")],
-        )
+        self.assertEqual(documentos_b, [])
+        self.assertEqual([cell["status"] for cell in banco_a["cells"]], ["Recebido", "Pendente", "Nao cobrar"])
         self.assertEqual(tipo_balancetes["nome_tipo"], "Balancetes")
 
     def test_import_service_complete_import_updates_existing_company_and_rolls_back_failed_rows(self) -> None:
@@ -828,6 +887,7 @@ class ApplicationServiceTests(unittest.TestCase):
         self.assertEqual(result["companies_created"], 0)
         self.assertEqual(result["companies_updated"], 1)
         self.assertEqual(result["documents_imported"], 1)
+        self.assertEqual(result["statuses_imported"], 0)
         self.assertEqual(result["failed"], 1)
         self.assertIsNone(self.empresa_service.get_empresa_by_code(611))
         self.assertEqual(empresa_atualizada["nome_empresa"], "Empresa Existente Atualizada")
@@ -838,6 +898,59 @@ class ApplicationServiceTests(unittest.TestCase):
         self.assertEqual([doc["nome_documento"] for doc in documentos], ["Banco Central"])
         self.assertEqual(documentos[0]["meios_recebimento"], "Email, Onvio")
         self.assertIn("Linha 3", result["errors"][0])
+
+    def test_import_service_complete_import_ignores_month_columns_on_company_only_rows(self) -> None:
+        class FakeWorksheet:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def iter_rows(self, min_row=1, values_only=True):
+                return iter(self._rows)
+
+        class FakeWorkbook:
+            def __init__(self, rows):
+                self.active = FakeWorksheet(rows)
+
+        self.periodo_service.generate_year(2026)
+        workbook = FakeWorkbook(
+            [
+                (
+                    "codigo_empresa",
+                    "nome_empresa",
+                    "email_contato",
+                    "nome_contato",
+                    "nome_documento",
+                    "meio de recebimento",
+                    "tipos",
+                    "observacoes",
+                    "janeiro",
+                ),
+                (
+                    612,
+                    "Empresa So Cadastro",
+                    "empresa@teste.com",
+                    "Nadia",
+                    None,
+                    None,
+                    None,
+                    "Sem documentos ainda",
+                    "email-indevido@teste.com",
+                ),
+            ]
+        )
+
+        with patch.object(self.import_service, "_load_workbook", return_value=workbook):
+            result = self.import_service.import_cadastros_completos("cadastro_completo_so_empresa.xlsx")
+
+        empresa = self.empresa_service.get_empresa_by_code(612)
+        documentos = self.documento_service.list_documentos_empresa(empresa["id"])
+
+        self.assertEqual(result["processed_rows"], 1)
+        self.assertEqual(result["documents_imported"], 0)
+        self.assertEqual(result["statuses_imported"], 0)
+        self.assertEqual(result["failed"], 0)
+        self.assertEqual(empresa["observacao"], "Sem documentos ainda")
+        self.assertEqual(documentos, [])
 
     def test_alias_type_name_is_normalized_to_existing_canonical_type(self) -> None:
         tipo = self.tipo_service.get_or_create_tipo("Extrato CC")

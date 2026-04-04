@@ -4,6 +4,7 @@ import re
 
 from documentos_empresa_app.database.connection import DatabaseManager
 from documentos_empresa_app.utils.common import (
+    AUTO_STATUS_NAO_COBRAR,
     DOCUMENT_DELIVERY_OPTIONS,
     MAX_COMPANY_OBSERVATION_LENGTH,
     normalize_delivery_methods,
@@ -78,7 +79,10 @@ SCHEMA_STATEMENTS = (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         documento_empresa_id INTEGER NOT NULL,
         periodo_id INTEGER NOT NULL,
-        status TEXT NULL CHECK (status IN ('Recebido', 'Pendente', 'Encerrado') OR status IS NULL),
+        status TEXT NULL CHECK (
+            status IN ('Recebido', 'Pendente', 'Encerrado', 'Nao cobrar')
+            OR status IS NULL
+        ),
         updated_by_user_id INTEGER NULL,
         updated_at TEXT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (documento_empresa_id) REFERENCES documentos_empresa(id) ON DELETE CASCADE,
@@ -147,6 +151,7 @@ def initialize_schema(db_manager: DatabaseManager) -> None:
         migrate_empresa_delivery_methods_to_documentos(connection)
         normalize_documento_delivery_methods(connection)
         ensure_log_metadata_columns(connection)
+        ensure_status_allowed_values(connection)
         ensure_status_audit_columns(connection)
         backfill_log_metadata(connection)
 
@@ -368,6 +373,73 @@ def ensure_status_audit_columns(connection) -> None:
         UPDATE status_documento_mensal
         SET updated_at = CURRENT_TIMESTAMP
         WHERE updated_at IS NULL
+        """
+    )
+
+
+def ensure_status_allowed_values(connection) -> None:
+    row = connection.execute(
+        """
+        SELECT sql
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'status_documento_mensal'
+        """
+    ).fetchone()
+    table_sql = row["sql"] if row else ""
+    if AUTO_STATUS_NAO_COBRAR in str(table_sql or ""):
+        return
+
+    connection.execute("ALTER TABLE status_documento_mensal RENAME TO status_documento_mensal_legacy")
+    connection.execute(
+        """
+        CREATE TABLE status_documento_mensal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            documento_empresa_id INTEGER NOT NULL,
+            periodo_id INTEGER NOT NULL,
+            status TEXT NULL CHECK (
+                status IN ('Recebido', 'Pendente', 'Encerrado', 'Nao cobrar')
+                OR status IS NULL
+            ),
+            updated_by_user_id INTEGER NULL,
+            updated_at TEXT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (documento_empresa_id) REFERENCES documentos_empresa(id) ON DELETE CASCADE,
+            FOREIGN KEY (periodo_id) REFERENCES periodos(id) ON DELETE CASCADE,
+            CONSTRAINT uq_status UNIQUE (documento_empresa_id, periodo_id)
+        )
+        """
+    )
+
+    legacy_columns = {
+        info["name"]
+        for info in connection.execute("PRAGMA table_info(status_documento_mensal_legacy)").fetchall()
+    }
+    copy_columns = [
+        column_name
+        for column_name in (
+            "id",
+            "documento_empresa_id",
+            "periodo_id",
+            "status",
+            "updated_by_user_id",
+            "updated_at",
+        )
+        if column_name in legacy_columns
+    ]
+    if copy_columns:
+        column_list = ", ".join(copy_columns)
+        connection.execute(
+            f"""
+            INSERT INTO status_documento_mensal ({column_list})
+            SELECT {column_list}
+            FROM status_documento_mensal_legacy
+            """
+        )
+
+    connection.execute("DROP TABLE status_documento_mensal_legacy")
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_status_documento_periodo
+        ON status_documento_mensal (documento_empresa_id, periodo_id)
         """
     )
 
