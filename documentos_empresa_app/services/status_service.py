@@ -50,64 +50,66 @@ class StatusService:
                 raise ValidationError("Periodo nao encontrado.")
 
             existing = self.status_repository.get_by_document_and_period(documento_id, periodo_id)
-            previous_status = existing["status"] if existing else None
-            if previous_status == normalized:
-                return
-
-            occurrence_rule = normalize_type_occurrence_rule(documento.get("regra_ocorrencia"))
-            if not is_chargeable_period(occurrence_rule, periodo["mes"]) and normalized not in (
-                "",
-                None,
-                AUTO_STATUS_NAO_COBRAR,
-            ):
-                raise ValidationError(
-                    (
-                        f'O tipo "{documento["nome_tipo"]}" esta configurado como '
-                        f'{get_type_occurrence_label(occurrence_rule).lower()} e o periodo '
-                        f'{periodo["mes"]:02d}/{periodo["ano"]} fica automaticamente como "{AUTO_STATUS_NAO_COBRAR}".'
-                    )
-                )
-
             closure_key = self._get_closure_key_map([documento]).get(documento_id)
-            target_key = month_key(periodo["ano"], periodo["mes"])
-            if closure_key is not None:
-                if target_key > closure_key and normalized not in ("", None, AUTO_STATUS_NAO_COBRAR):
-                    raise ValidationError(
-                        "Esse documento ja foi encerrado em um mes anterior e nao pode receber status depois disso."
-                    )
-
-            future_statuses = []
-            if normalized == "Encerrado":
-                future_statuses = self.status_repository.list_future_statuses(
-                    documento_id,
-                    periodo["ano"],
-                    periodo["mes"],
-                )
-
-            self.status_repository.upsert(
-                documento_id,
-                periodo_id,
-                normalized,
-                self.session_service.get_user_id() if self.session_service else None,
-            )
-            if normalized == "Encerrado":
-                self.status_repository.delete_future_statuses(documento_id, periodo["ano"], periodo["mes"])
-
             empresa = self.empresa_repository.get_by_id(documento["empresa_id"])
-            if not empresa:
-                return
+            self._apply_status_change(
+                documento,
+                periodo,
+                normalized,
+                existing,
+                closure_key,
+                empresa=empresa,
+                updated_by_user_id=self.session_service.get_user_id() if self.session_service else None,
+            )
 
-            self._log_status_change(empresa, documento, periodo, previous_status, normalized)
-            for removed_status in future_statuses:
-                if removed_status["status"] in ("", None, AUTO_STATUS_NAO_COBRAR):
-                    continue
-                self._log_status_change(
-                    empresa,
+    def update_status_batch(self, documento_ids: list[int], periodo_id: int, status: str | None) -> dict:
+        unique_document_ids = list(dict.fromkeys(documento_ids))
+        if not unique_document_ids:
+            raise ValidationError("Selecione pelo menos um documento para alterar em lote.")
+
+        normalized = self._normalize_status(status)
+        with self.status_repository.db_manager.connect():
+            periodo = self.periodo_repository.get_by_id(periodo_id)
+            if not periodo:
+                raise ValidationError("Periodo nao encontrado.")
+
+            documentos = self.documento_repository.list_by_ids(unique_document_ids)
+            if len(documentos) != len(unique_document_ids):
+                raise ValidationError("Um ou mais documentos selecionados nao foram encontrados.")
+
+            documentos_by_id = {documento["id"]: documento for documento in documentos}
+            documentos_ordenados = [documentos_by_id[documento_id] for documento_id in unique_document_ids]
+            existing_rows = self.status_repository.list_for_documents_and_periods(unique_document_ids, [periodo_id])
+            existing_by_key = {
+                (row["documento_empresa_id"], row["periodo_id"]): row
+                for row in existing_rows
+            }
+            closure_map = self._get_closure_key_map(documentos_ordenados)
+            empresas = self.empresa_repository.list_by_ids(
+                [documento["empresa_id"] for documento in documentos_ordenados]
+            )
+            empresas_by_id = {empresa["id"]: empresa for empresa in empresas}
+            updated_by_user_id = self.session_service.get_user_id() if self.session_service else None
+
+            updated_document_ids: list[int] = []
+            for documento in documentos_ordenados:
+                updated = self._apply_status_change(
                     documento,
-                    {"ano": removed_status["ano"], "mes": removed_status["mes"]},
-                    removed_status["status"],
-                    None,
+                    periodo,
+                    normalized,
+                    existing_by_key.get((documento["id"], periodo_id)),
+                    closure_map.get(documento["id"]),
+                    empresa=empresas_by_id.get(documento["empresa_id"]),
+                    updated_by_user_id=updated_by_user_id,
                 )
+                if updated:
+                    updated_document_ids.append(documento["id"])
+
+        return {
+            "selected": len(unique_document_ids),
+            "updated": len(updated_document_ids),
+            "document_ids": updated_document_ids,
+        }
 
     def build_control_view(self, empresa_id: int, start_period_id: int, end_period_id: int) -> dict:
         empresa = self.empresa_repository.get_by_id(empresa_id)
@@ -203,6 +205,80 @@ class StatusService:
         if normalized not in self.valid_statuses:
             raise ValidationError("Status invalido informado.")
         return normalized
+
+    def _apply_status_change(
+        self,
+        documento: dict,
+        periodo: dict,
+        normalized_status: str | None,
+        existing_row: dict | None,
+        closure_key: int | None,
+        *,
+        empresa: dict | None,
+        updated_by_user_id: int | None,
+    ) -> bool:
+        previous_status = existing_row["status"] if existing_row else None
+        if previous_status == normalized_status:
+            return False
+
+        occurrence_rule = normalize_type_occurrence_rule(documento.get("regra_ocorrencia"))
+        if not is_chargeable_period(occurrence_rule, periodo["mes"]) and normalized_status not in (
+            "",
+            None,
+            AUTO_STATUS_NAO_COBRAR,
+        ):
+            raise ValidationError(
+                (
+                    f'O tipo "{documento["nome_tipo"]}" esta configurado como '
+                    f'{get_type_occurrence_label(occurrence_rule).lower()} e o periodo '
+                    f'{periodo["mes"]:02d}/{periodo["ano"]} fica automaticamente como "{AUTO_STATUS_NAO_COBRAR}".'
+                )
+            )
+
+        target_key = month_key(periodo["ano"], periodo["mes"])
+        if closure_key is not None and target_key > closure_key and normalized_status not in (
+            "",
+            None,
+            AUTO_STATUS_NAO_COBRAR,
+        ):
+            raise ValidationError(
+                "Esse documento ja foi encerrado em um mes anterior e nao pode receber status depois disso."
+            )
+
+        future_statuses = []
+        if normalized_status == "Encerrado":
+            future_statuses = self.status_repository.list_future_statuses(
+                documento["id"],
+                periodo["ano"],
+                periodo["mes"],
+            )
+
+        self.status_repository.upsert(
+            documento["id"],
+            periodo["id"],
+            normalized_status,
+            updated_by_user_id,
+        )
+        if normalized_status == "Encerrado":
+            self.status_repository.delete_future_statuses(documento["id"], periodo["ano"], periodo["mes"])
+
+        if not empresa:
+            empresa = self.empresa_repository.get_by_id(documento["empresa_id"])
+        if not empresa:
+            return True
+
+        self._log_status_change(empresa, documento, periodo, previous_status, normalized_status)
+        for removed_status in future_statuses:
+            if removed_status["status"] in ("", None, AUTO_STATUS_NAO_COBRAR):
+                continue
+            self._log_status_change(
+                empresa,
+                documento,
+                {"ano": removed_status["ano"], "mes": removed_status["mes"]},
+                removed_status["status"],
+                None,
+            )
+        return True
 
     def _resolve_control_periods(self, start_period_id: int, end_period_id: int) -> list[dict]:
         start_period = self.periodo_repository.get_by_id(start_period_id)

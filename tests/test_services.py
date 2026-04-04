@@ -209,6 +209,50 @@ class ApplicationServiceTests(unittest.TestCase):
         self.assertEqual(cell["updated_by_username"], "admin")
         self.assertTrue(cell["updated_at"])
 
+    def test_batch_status_update_applies_same_status_to_multiple_documents(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(113, "Empresa Lote")
+        tipo_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
+        documento_a_id = self.documento_service.create_documento(empresa_id, tipo_id, "Banco Lote A")
+        documento_b_id = self.documento_service.create_documento(empresa_id, tipo_id, "Banco Lote B")
+        self.periodo_service.generate_year(2026)
+
+        periodos = self.periodo_service.list_periodos()
+        jan = next(item for item in periodos if item["ano"] == 2026 and item["mes"] == 1)
+
+        result = self.status_service.update_status_batch([documento_a_id, documento_b_id], jan["id"], "Recebido")
+        view = self.status_service.build_control_view(empresa_id, jan["id"], jan["id"])
+        documentos = {
+            documento["nome_documento"]: documento
+            for group in view["groups"]
+            for documento in group["documentos"]
+        }
+
+        self.assertEqual(result["selected"], 2)
+        self.assertEqual(result["updated"], 2)
+        self.assertEqual(documentos["Banco Lote A"]["cells"][0]["status"], "Recebido")
+        self.assertEqual(documentos["Banco Lote B"]["cells"][0]["status"], "Recebido")
+
+    def test_batch_status_update_rolls_back_when_one_document_is_invalid(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(114, "Empresa Lote Invalido")
+        tipo_mensal_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
+        tipo_anual_id = self.tipo_service.create_tipo("Declaracao Anual", TYPE_OCCURRENCE_ANUAL_JANEIRO)
+        documento_mensal_id = self.documento_service.create_documento(empresa_id, tipo_mensal_id, "Banco Mensal")
+        documento_anual_id = self.documento_service.create_documento(empresa_id, tipo_anual_id, "Declaracao")
+        self.periodo_service.generate_year(2026)
+
+        periodos = self.periodo_service.list_periodos()
+        fevereiro = next(item for item in periodos if item["ano"] == 2026 and item["mes"] == 2)
+
+        with self.assertRaises(ValidationError):
+            self.status_service.update_status_batch(
+                [documento_mensal_id, documento_anual_id],
+                fevereiro["id"],
+                "Recebido",
+            )
+
+        self.assertIsNone(self.status_repository.get_by_document_and_period(documento_mensal_id, fevereiro["id"]))
+        self.assertIsNone(self.status_repository.get_by_document_and_period(documento_anual_id, fevereiro["id"]))
+
     @unittest.skipIf(load_workbook is None, "openpyxl nao esta disponivel no ambiente de teste")
     def test_pending_report_exports_excel(self) -> None:
         empresa_id = self.empresa_service.create_empresa(111, "Empresa Excel")

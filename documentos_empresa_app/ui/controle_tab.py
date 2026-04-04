@@ -32,6 +32,17 @@ class ControleTab(ttk.Frame):
         self.document_header_frame: tk.Frame | None = None
         self._resize_start_x: int | None = None
         self._resize_start_width: int | None = None
+        self.bulk_mode_enabled = False
+        self.bulk_selection_vars: dict[int, tk.BooleanVar] = {}
+        self.bulk_period_options: dict[str, int] = {}
+        self.bulk_status_options = {
+            "Recebido": "Recebido",
+            "Pendente": "Pendente",
+            "Encerrado": "Encerrado",
+            "Nao cobrar": "Nao cobrar",
+            "Limpar status": "",
+        }
+        self._bulk_selection_updates_suspended = False
         self.default_message_text = "Selecione a empresa e o intervalo para consultar."
 
         self.start_year_var = tk.StringVar()
@@ -39,6 +50,9 @@ class ControleTab(ttk.Frame):
         self.end_year_var = tk.StringVar()
         self.end_month_var = tk.StringVar()
         self.message_var = tk.StringVar(value=self.default_message_text)
+        self.bulk_period_var = tk.StringVar()
+        self.bulk_status_var = tk.StringVar()
+        self.bulk_selection_summary_var = tk.StringVar(value="Nenhum documento selecionado.")
 
         self._build_layout()
 
@@ -92,23 +106,92 @@ class ControleTab(ttk.Frame):
 
         legend = ttk.Frame(self)
         legend.pack(fill="x", pady=(0, 10))
-        ttk.Label(legend, text="Legenda:").pack(side="left")
-        self._legend_chip(legend, "Recebido").pack(side="left", padx=(8, 4))
-        self._legend_chip(legend, "Pendente").pack(side="left", padx=4)
-        self._legend_chip(legend, "Encerrado").pack(side="left", padx=4)
-        self._legend_chip(legend, "Nao cobrar").pack(side="left", padx=4)
+        legend_left = ttk.Frame(legend)
+        legend_left.pack(side="left")
+        ttk.Label(legend_left, text="Legenda:").pack(side="left")
+        self._legend_chip(legend_left, "Recebido").pack(side="left", padx=(8, 4))
+        self._legend_chip(legend_left, "Pendente").pack(side="left", padx=4)
+        self._legend_chip(legend_left, "Encerrado").pack(side="left", padx=4)
+        self._legend_chip(legend_left, "Nao cobrar").pack(side="left", padx=4)
+        self.bulk_mode_button = ttk.Button(
+            legend,
+            text="Selecao em lote",
+            command=self.toggle_bulk_selection_mode,
+            state="disabled",
+        )
+        self.bulk_mode_button.pack(side="right")
 
         ttk.Label(self, textvariable=self.message_var).pack(fill="x", pady=(0, 8))
 
         result_frame = ttk.LabelFrame(self, text="Consulta e controle mensal", padding=10)
         result_frame.pack(fill="both", expand=True)
+        self.bulk_panel = ttk.Frame(result_frame)
+        ttk.Label(self.bulk_panel, textvariable=self.bulk_selection_summary_var).grid(
+            row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 6)
+        )
+        self.bulk_select_all_button = ttk.Button(
+            self.bulk_panel,
+            text="Marcar todos",
+            command=self.select_all_documents_in_bulk,
+        )
+        self.bulk_select_all_button.grid(row=0, column=1, sticky="w", padx=(0, 6), pady=(0, 6))
+        self.bulk_clear_button = ttk.Button(
+            self.bulk_panel,
+            text="Limpar selecao",
+            command=self.clear_bulk_selection,
+        )
+        self.bulk_clear_button.grid(row=0, column=2, sticky="w", pady=(0, 6))
+        ttk.Label(self.bulk_panel, text="Periodo").grid(row=1, column=0, sticky="w", padx=(0, 6))
+        self.bulk_period_combo = ttk.Combobox(
+            self.bulk_panel,
+            textvariable=self.bulk_period_var,
+            state="readonly",
+            width=24,
+        )
+        self.bulk_period_combo.grid(row=1, column=1, sticky="w", padx=(0, 12))
+        ttk.Label(self.bulk_panel, text="Status").grid(row=1, column=2, sticky="w", padx=(0, 6))
+        self.bulk_status_combo = ttk.Combobox(
+            self.bulk_panel,
+            textvariable=self.bulk_status_var,
+            state="readonly",
+            width=18,
+            values=list(self.bulk_status_options),
+        )
+        self.bulk_status_combo.grid(row=1, column=3, sticky="w", padx=(0, 12))
+        self.bulk_apply_button = ttk.Button(
+            self.bulk_panel,
+            text="Aplicar nos selecionados",
+            command=self.apply_bulk_status,
+        )
+        self.bulk_apply_button.grid(row=1, column=4, sticky="w")
         self.scrollable = ScrollableFrame(result_frame)
         self.scrollable.pack(fill="both", expand=True)
+        self.bulk_panel.grid_columnconfigure(4, weight=1)
         self._set_directory_actions_enabled(False)
+        self._update_bulk_controls_state()
 
     def _legend_chip(self, master, text: str):
         chip = tk.Label(master, text=f" {text} ", bg=STATUS_COLORS[text], relief="solid", bd=1)
         return chip
+
+    def _show_bulk_panel(self) -> None:
+        if self.bulk_panel.winfo_manager() != "pack":
+            self.bulk_panel.pack(fill="x", pady=(0, 8), before=self.scrollable)
+
+    def _hide_bulk_panel(self) -> None:
+        if self.bulk_panel.winfo_manager():
+            self.bulk_panel.pack_forget()
+
+    def _clear_bulk_context(self) -> None:
+        self.bulk_mode_enabled = False
+        self.bulk_selection_vars = {}
+        self.bulk_period_options = {}
+        self.bulk_period_var.set("")
+        self.bulk_status_var.set("")
+        self.bulk_selection_summary_var.set("Nenhum documento selecionado.")
+        self.bulk_mode_button.configure(text="Selecao em lote", state="disabled")
+        self._hide_bulk_panel()
+        self._update_bulk_controls_state()
 
     def refresh_data(self) -> None:
         self.company_selector.refresh_companies()
@@ -125,6 +208,7 @@ class ControleTab(ttk.Frame):
                 except ValidationError:
                     self.current_filters = None
                     self.current_view = None
+                    self._clear_bulk_context()
                     self._set_default_message("Selecione a empresa e o intervalo para consultar.")
                     self._clear_result_area()
         else:
@@ -298,6 +382,7 @@ class ControleTab(ttk.Frame):
     def clear_filters(self) -> None:
         self.current_filters = None
         self.current_view = None
+        self._clear_bulk_context()
         self.company_selector.clear_selection()
         self.start_year_var.set("")
         self.start_month_var.set("")
@@ -324,12 +409,6 @@ class ControleTab(ttk.Frame):
             return
         start_period_id, end_period_id = period_ids
 
-        try:
-            view = self.services.status_service.build_control_view(company_id, start_period_id, end_period_id)
-        except ValidationError as exc:
-            messagebox.showerror("Controle", str(exc), parent=self)
-            return
-
         if preserve_scroll and scroll_position is None:
             scroll_position = self._get_scroll_position()
 
@@ -338,7 +417,26 @@ class ControleTab(ttk.Frame):
             "start_period_id": start_period_id,
             "end_period_id": end_period_id,
         }
+        self._reload_current_view(scroll_position=scroll_position)
+
+    def _reload_current_view(self, scroll_position: float | None = None) -> bool:
+        if not self.current_filters:
+            return False
+
+        company_id = self.current_filters.get("company_id")
+        start_period_id = self.current_filters.get("start_period_id")
+        end_period_id = self.current_filters.get("end_period_id")
+        if not company_id or not start_period_id or not end_period_id:
+            return False
+
+        try:
+            view = self.services.status_service.build_control_view(company_id, start_period_id, end_period_id)
+        except ValidationError as exc:
+            messagebox.showerror("Controle", str(exc), parent=self)
+            return False
+
         self.render_result(view, scroll_position=scroll_position)
+        return True
 
     def render_result(self, view: dict, scroll_position: float | None = None) -> None:
         self.current_view = view
@@ -351,12 +449,25 @@ class ControleTab(ttk.Frame):
         periodos = view["periodos"]
         groups = view["groups"]
         if not groups:
+            self._clear_bulk_context()
             self._set_default_message("Nenhum documento encontrado para a empresa e periodo informados.")
             ttk.Label(self.scrollable.inner, text="Nenhum documento encontrado para a consulta.").grid(
                 row=0, column=0, sticky="w", padx=6, pady=6
             )
             self._restore_scroll_position(scroll_position)
             return
+
+        self._sync_bulk_selection_with_view(view)
+        self._refresh_bulk_period_options(view)
+        self.bulk_mode_button.configure(
+            state="normal",
+            text="Fechar lote" if self.bulk_mode_enabled else "Selecao em lote",
+        )
+        if self.bulk_mode_enabled:
+            self._show_bulk_panel()
+        else:
+            self._hide_bulk_panel()
+        self._update_bulk_controls_state()
 
         self._set_default_message(
             f'Empresa consultada: {view["empresa"]["nome_empresa"]}. Clique nos grupos para expandir ou recolher.'
@@ -480,20 +591,9 @@ class ControleTab(ttk.Frame):
         row_widgets: list[tk.Widget] = []
         variables: list[tk.StringVar] = []
 
-        name_label = tk.Label(
-            self.scrollable.inner,
-            text=document["nome_documento"],
-            anchor="w",
-            justify="left",
-            relief="solid",
-            bd=1,
-            bg="#FFFFFF",
-            padx=8,
-            pady=6,
-        )
-        name_label.grid(row=row_index, column=0, sticky="nsew", padx=1, pady=1)
+        name_widget, name_label, selection_control = self._create_document_name_cell(document, row_index)
         self.document_name_labels.append(name_label)
-        row_widgets.append(name_label)
+        row_widgets.append(name_widget)
 
         for column_index, cell in enumerate(document["cells"], start=1):
             period_label = f'{periodos[column_index - 1]["mes"]:02d}/{periodos[column_index - 1]["ano"]}'
@@ -527,10 +627,13 @@ class ControleTab(ttk.Frame):
             "group_name": group_name,
             "row_index": row_index,
             "row_widgets": row_widgets,
+            "name_container": name_widget,
             "name_label": name_label,
+            "selection_control": selection_control,
             "variables": variables,
             "document": document,
         }
+        self._apply_bulk_document_selection_style(document["id"])
 
         document_ids = self.group_widgets[group_name]["document_ids"]
         if document["id"] not in document_ids:
@@ -538,6 +641,260 @@ class ControleTab(ttk.Frame):
 
         if not visible:
             self._set_document_row_visible(document["id"], visible=False)
+
+    def _create_document_name_cell(self, document: dict, row_index: int) -> tuple[tk.Widget, tk.Label, tk.Checkbutton | None]:
+        background = self._bulk_document_background(document["id"])
+        if not self.bulk_mode_enabled:
+            name_label = tk.Label(
+                self.scrollable.inner,
+                text=document["nome_documento"],
+                anchor="w",
+                justify="left",
+                relief="solid",
+                bd=1,
+                bg=background,
+                padx=8,
+                pady=6,
+            )
+            name_label.grid(row=row_index, column=0, sticky="nsew", padx=1, pady=1)
+            return name_label, name_label, None
+
+        selection_var = self.bulk_selection_vars.get(document["id"])
+        name_frame = tk.Frame(
+            self.scrollable.inner,
+            relief="solid",
+            bd=1,
+            bg=background,
+        )
+        name_frame.grid(row=row_index, column=0, sticky="nsew", padx=1, pady=1)
+        name_frame.grid_columnconfigure(1, weight=1)
+
+        checkbox = tk.Checkbutton(
+            name_frame,
+            variable=selection_var,
+            bg=background,
+            activebackground=background,
+            selectcolor=background,
+            highlightthickness=0,
+            bd=0,
+            relief="flat",
+        )
+        checkbox.grid(row=0, column=0, sticky="w", padx=(6, 4), pady=6)
+
+        name_label = tk.Label(
+            name_frame,
+            text=document["nome_documento"],
+            anchor="w",
+            justify="left",
+            bg=background,
+            padx=4,
+            pady=6,
+        )
+        name_label.grid(row=0, column=1, sticky="nsew", padx=(0, 8))
+
+        for widget in (name_frame, name_label):
+            widget.bind(
+                "<Button-1>",
+                lambda _event, doc_id=document["id"]: self._toggle_bulk_document_selection(doc_id),
+            )
+
+        return name_frame, name_label, checkbox
+
+    def _sync_bulk_selection_with_view(self, view: dict) -> None:
+        valid_document_ids = [
+            document["id"]
+            for group in view.get("groups", [])
+            for document in group.get("documentos", [])
+        ]
+        valid_document_id_set = set(valid_document_ids)
+
+        for document_id in list(self.bulk_selection_vars):
+            if document_id not in valid_document_id_set:
+                self.bulk_selection_vars.pop(document_id)
+
+        for document_id in valid_document_ids:
+            if document_id in self.bulk_selection_vars:
+                continue
+            variable = tk.BooleanVar(value=False)
+            variable.trace_add(
+                "write",
+                lambda *_args, current_id=document_id: self._on_bulk_selection_changed(current_id),
+            )
+            self.bulk_selection_vars[document_id] = variable
+
+        self._update_bulk_selection_summary()
+
+    def _refresh_bulk_period_options(self, view: dict) -> None:
+        labels = []
+        self.bulk_period_options = {}
+        for periodo in view.get("periodos", []):
+            label = f'{periodo["mes"]:02d}/{periodo["ano"]} - {MONTH_NAMES[periodo["mes"]]}'
+            labels.append(label)
+            self.bulk_period_options[label] = periodo["id"]
+        self.bulk_period_combo.configure(values=labels)
+        if self.bulk_period_var.get() not in labels:
+            self.bulk_period_var.set(labels[0] if labels else "")
+
+    def _bulk_document_background(self, document_id: int) -> str:
+        selection_var = self.bulk_selection_vars.get(document_id)
+        if selection_var and selection_var.get():
+            return "#EAF3FF"
+        return "#FFFFFF"
+
+    def _toggle_bulk_document_selection(self, document_id: int) -> None:
+        if not self.bulk_mode_enabled:
+            return
+        selection_var = self.bulk_selection_vars.get(document_id)
+        if selection_var is None:
+            return
+        selection_var.set(not selection_var.get())
+
+    def _on_bulk_selection_changed(self, document_id: int) -> None:
+        if self._bulk_selection_updates_suspended:
+            return
+        self._apply_bulk_document_selection_style(document_id)
+        self._update_bulk_selection_summary()
+
+    def _apply_bulk_document_selection_style(self, document_id: int) -> None:
+        row_info = self.document_rows.get(document_id)
+        if not row_info:
+            return
+
+        background = self._bulk_document_background(document_id)
+        name_container = row_info.get("name_container")
+        name_label = row_info.get("name_label")
+        selection_control = row_info.get("selection_control")
+
+        if name_container and name_container.winfo_exists():
+            name_container.configure(bg=background)
+        if name_label and name_label.winfo_exists():
+            name_label.configure(bg=background)
+        if selection_control and selection_control.winfo_exists():
+            selection_control.configure(
+                bg=background,
+                activebackground=background,
+                selectcolor=background,
+            )
+
+    def _selected_bulk_document_ids(self) -> list[int]:
+        return [
+            document_id
+            for document_id, variable in self.bulk_selection_vars.items()
+            if variable.get()
+        ]
+
+    def _update_bulk_selection_summary(self) -> None:
+        selected_count = len(self._selected_bulk_document_ids())
+        if selected_count == 0:
+            self.bulk_selection_summary_var.set("Nenhum documento selecionado.")
+        elif selected_count == 1:
+            self.bulk_selection_summary_var.set("1 documento selecionado.")
+        else:
+            self.bulk_selection_summary_var.set(f"{selected_count} documentos selecionados.")
+        self._update_bulk_controls_state()
+
+    def _set_bulk_selection_state(self, document_ids: list[int], selected: bool) -> None:
+        self._bulk_selection_updates_suspended = True
+        for document_id in document_ids:
+            variable = self.bulk_selection_vars.get(document_id)
+            if variable is not None:
+                variable.set(selected)
+        self._bulk_selection_updates_suspended = False
+
+        for document_id in document_ids:
+            self._apply_bulk_document_selection_style(document_id)
+        self._update_bulk_selection_summary()
+
+    def _update_bulk_controls_state(self) -> None:
+        has_documents = bool(self.bulk_selection_vars)
+        selected_count = len(self._selected_bulk_document_ids())
+        active_state = "normal" if self.bulk_mode_enabled and has_documents else "disabled"
+
+        self.bulk_select_all_button.configure(state=active_state)
+        self.bulk_clear_button.configure(state="normal" if self.bulk_mode_enabled and selected_count else "disabled")
+        self.bulk_period_combo.configure(
+            state="readonly" if self.bulk_mode_enabled and self.bulk_period_options else "disabled"
+        )
+        self.bulk_status_combo.configure(state="readonly" if self.bulk_mode_enabled and has_documents else "disabled")
+        self.bulk_apply_button.configure(state="normal" if self.bulk_mode_enabled and selected_count else "disabled")
+
+    def toggle_bulk_selection_mode(self) -> None:
+        if not self.current_view or not self.current_view.get("groups"):
+            return
+
+        scroll_position = self._get_scroll_position()
+        self.bulk_mode_enabled = not self.bulk_mode_enabled
+        if self.bulk_mode_enabled:
+            self._show_bulk_panel()
+        else:
+            self._set_bulk_selection_state(list(self.bulk_selection_vars), False)
+            self._hide_bulk_panel()
+
+        self.bulk_mode_button.configure(text="Fechar lote" if self.bulk_mode_enabled else "Selecao em lote")
+        self._update_bulk_controls_state()
+        self.render_result(self.current_view, scroll_position=scroll_position)
+
+    def select_all_documents_in_bulk(self) -> None:
+        self._set_bulk_selection_state(list(self.bulk_selection_vars), True)
+
+    def clear_bulk_selection(self) -> None:
+        self._set_bulk_selection_state(list(self.bulk_selection_vars), False)
+
+    def apply_bulk_status(self) -> None:
+        selected_document_ids = self._selected_bulk_document_ids()
+        if not selected_document_ids:
+            messagebox.showwarning("Controle", "Selecione pelo menos um documento para alterar em lote.", parent=self)
+            return
+
+        period_label = self.bulk_period_var.get().strip()
+        period_id = self.bulk_period_options.get(period_label)
+        if not period_id:
+            messagebox.showwarning("Controle", "Escolha um periodo da grade para aplicar o lote.", parent=self)
+            return
+
+        status_label = self.bulk_status_var.get().strip()
+        if status_label not in self.bulk_status_options:
+            messagebox.showwarning("Controle", "Escolha o status que sera aplicado aos documentos selecionados.", parent=self)
+            return
+
+        status_value = self.bulk_status_options[status_label]
+        period_short_label = period_label.split(" - ", 1)[0]
+        action_label = (
+            "limpar o status"
+            if status_label == "Limpar status"
+            else f'aplicar o status "{status_label}"'
+        )
+        confirmed = messagebox.askyesno(
+            "Controle",
+            (
+                f'Deseja {action_label} em {len(selected_document_ids)} documento(s) '
+                f'para o periodo {period_short_label}?'
+            ),
+            parent=self,
+        )
+        if not confirmed:
+            return
+
+        scroll_position = self._get_scroll_position()
+        try:
+            result = self.services.status_service.update_status_batch(selected_document_ids, period_id, status_value)
+        except ValidationError as exc:
+            messagebox.showerror("Controle", str(exc), parent=self)
+            return
+
+        self.clear_bulk_selection()
+        self._reload_current_view(scroll_position=scroll_position)
+
+        if status_label == "Limpar status":
+            status_message = "status limpo"
+        else:
+            status_message = f'status "{status_label}"'
+        self._set_default_message(
+            (
+                f'Alteracao em lote concluida: {result["updated"]} de {result["selected"]} documento(s) '
+                f'atualizado(s) em {period_short_label} com {status_message}.'
+            )
+        )
 
     def _create_status_cell(
         self,
@@ -810,7 +1167,8 @@ class ControleTab(ttk.Frame):
         if self.document_header_frame and self.document_header_frame.winfo_exists():
             self.document_header_frame.configure(width=self.document_column_width)
 
-        wraplength = max(self.document_column_width - 24, 120)
+        reserved_space = 72 if self.bulk_mode_enabled else 24
+        wraplength = max(self.document_column_width - reserved_space, 120)
         for label in self.document_name_labels:
             if label.winfo_exists():
                 label.configure(wraplength=wraplength)

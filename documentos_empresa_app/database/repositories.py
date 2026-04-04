@@ -521,6 +521,35 @@ class DocumentoRepository(BaseRepository):
             (documento_id,),
         )
 
+    def list_by_ids(self, documento_ids: list[int]) -> list[dict]:
+        unique_ids = self._unique_values(documento_ids)
+        if not unique_ids:
+            return []
+        rows: list[dict] = []
+        for chunk in self._chunk_values(unique_ids):
+            placeholders = ", ".join("?" for _ in chunk)
+            rows.extend(
+                self._fetchall(
+                    f"""
+                    SELECT
+                        d.id,
+                        d.empresa_id,
+                        d.tipo_documento_id,
+                        d.meios_recebimento,
+                        d.nome_documento,
+                        t.nome_tipo,
+                        t.regra_ocorrencia
+                    FROM documentos_empresa d
+                    INNER JOIN tipos_documento t ON t.id = d.tipo_documento_id
+                    WHERE d.id IN ({placeholders})
+                    """,
+                    tuple(chunk),
+                )
+            )
+        position_by_id = {documento_id: index for index, documento_id in enumerate(unique_ids)}
+        rows.sort(key=lambda item: position_by_id.get(item["id"], len(unique_ids)))
+        return rows
+
     def list_system_names(self, tipo_documento_id: int | None = None, search: str | None = None) -> list[dict]:
         filters: list[str] = []
         params: list = []
