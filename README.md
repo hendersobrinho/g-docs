@@ -152,8 +152,17 @@ scripts\build_release.bat
 Saidas esperadas:
 
 - build PyInstaller: `dist\G-docs\`
+- executavel principal: `dist\G-docs\G-docs.exe`
 - pacote versionado: `dist_release\G-docs-win64-v<versao>.zip`
 - se o `Inno Setup` estiver no `PATH`, o script tambem tenta gerar o instalador
+
+Se a pasta `dist\G-docs\` for criada vazia ou sem `G-docs.exe`, o build nao terminou corretamente. Nesse caso, rode manualmente:
+
+```powershell
+py -m PyInstaller --noconfirm --clean documentos_empresa_app.spec
+```
+
+e confira a ultima mensagem de erro do `PyInstaller`. Em Windows, as causas mais comuns sao antivirus/Defender removendo o executavel durante o build ou dependencias ausentes no ambiente Python usado pelo script.
 
 ### Pular testes no build
 

@@ -52,6 +52,7 @@ if not defined ICON_PYTHON (
 set "RUN_TESTS=%RUN_TESTS%"
 if not defined RUN_TESTS set "RUN_TESTS=1"
 set "DIST_DIR=dist\G-docs"
+set "APP_EXE=%DIST_DIR%\G-docs.exe"
 
 if not "%RUN_TESTS%"=="0" (
     echo Executando testes antes do build...
@@ -68,6 +69,15 @@ echo Executando PyInstaller...
 if errorlevel 1 exit /b %errorlevel%
 if not exist "%DIST_DIR%\" (
     echo O build terminou sem gerar a pasta "%DIST_DIR%".
+    exit /b 1
+)
+if not exist "%APP_EXE%" (
+    echo O build terminou sem gerar o executavel "%APP_EXE%".
+    echo Conteudo atual de "%DIST_DIR%":
+    dir "%DIST_DIR%" /a
+    echo.
+    echo Rode o comando abaixo para ver o log completo do PyInstaller:
+    echo   "%BUILD_PYTHON%" -m PyInstaller --noconfirm --clean documentos_empresa_app.spec
     exit /b 1
 )
 
