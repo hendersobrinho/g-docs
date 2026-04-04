@@ -3,31 +3,48 @@ setlocal EnableExtensions
 
 cd /d "%~dp0\.."
 
+goto :main
+
+:python_has_modules
+set "PYTHON_CMD=%~1"
+set "REQUIRED_MODULES=%~2"
+"%PYTHON_CMD%" -c "import importlib.util, sys; mods=[m for m in '%REQUIRED_MODULES%'.split(',') if m]; missing=[m for m in mods if importlib.util.find_spec(m) is None]; sys.exit(1 if missing else 0)" >nul 2>&1
+exit /b %errorlevel%
+
+:resolve_python_for_modules
+set "TARGET_VAR=%~1"
+set "REQUIRED_MODULES=%~2"
+for %%P in (py python) do (
+    call :python_has_modules "%%P" "%REQUIRED_MODULES%"
+    if not errorlevel 1 (
+        set "%TARGET_VAR%=%%P"
+        exit /b 0
+    )
+)
+exit /b 1
+
+:main
 set "BUILD_PYTHON="
 set "ICON_PYTHON="
 if exist ".venv\Scripts\python.exe" (
-    ".venv\Scripts\python.exe" -c "import importlib.util, sys; mods=['openpyxl','PyInstaller']; missing=[m for m in mods if importlib.util.find_spec(m) is None]; sys.exit(1 if missing else 0)" >nul 2>&1
+    call :python_has_modules ".venv\Scripts\python.exe" "openpyxl,PyInstaller"
     if not errorlevel 1 set "BUILD_PYTHON=.venv\Scripts\python.exe"
-    ".venv\Scripts\python.exe" -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('PIL') else 1)" >nul 2>&1
+    call :python_has_modules ".venv\Scripts\python.exe" "PIL"
     if not errorlevel 1 set "ICON_PYTHON=.venv\Scripts\python.exe"
 )
 if not defined BUILD_PYTHON (
-    python -c "import importlib.util, sys; mods=['openpyxl','PyInstaller']; missing=[m for m in mods if importlib.util.find_spec(m) is None]; sys.exit(1 if missing else 0)" >nul 2>&1
-    if not errorlevel 1 (
-        set "BUILD_PYTHON=python"
-    ) else (
+    call :resolve_python_for_modules BUILD_PYTHON "openpyxl,PyInstaller"
+    if errorlevel 1 (
         echo Dependencias ausentes para build. Instale com:
-        echo   python -m pip install -r requirements.txt
+        echo   py -m pip install -r requirements.txt
         exit /b 1
     )
 )
 if not defined ICON_PYTHON (
-    python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('PIL') else 1)" >nul 2>&1
-    if not errorlevel 1 (
-        set "ICON_PYTHON=python"
-    ) else (
+    call :resolve_python_for_modules ICON_PYTHON "PIL"
+    if errorlevel 1 (
         echo Dependencia ausente para gerar icones. Instale com:
-        echo   python -m pip install -r requirements.txt
+        echo   py -m pip install -r requirements.txt
         exit /b 1
     )
 )
