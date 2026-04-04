@@ -8,8 +8,8 @@ from documentos_empresa_app.database.repositories import EmpresaRepository
 from documentos_empresa_app.services.audit_service import AuditService
 from documentos_empresa_app.services.session_service import SessionService
 from documentos_empresa_app.utils.common import (
+    MAX_COMPANY_OBSERVATION_LENGTH,
     ValidationError,
-    normalize_delivery_methods,
 )
 
 
@@ -44,26 +44,26 @@ class EmpresaService:
         self,
         codigo_empresa,
         nome_empresa: str,
-        meios_recebimento: list[str] | tuple[str, ...] | str | None = None,
         email_contato: str | None = None,
         nome_contato: str | None = None,
+        observacao: str | None = None,
     ) -> int:
         codigo = self._parse_codigo(codigo_empresa)
         nome = self._normalize_name(nome_empresa, "O nome da empresa nao pode ficar vazio.")
-        meios = self._normalize_delivery_methods(meios_recebimento)
         email = self._normalize_optional_email(email_contato)
         contato = self._normalize_optional_text(nome_contato)
+        obs = self._normalize_observacao(observacao)
 
         try:
             with self.empresa_repository.db_manager.connect():
                 if self.empresa_repository.get_by_code(codigo):
                     raise ValidationError("Ja existe uma empresa cadastrada com esse codigo.")
-                empresa_id = self.empresa_repository.create(codigo, nome, meios, email, contato)
+                empresa_id = self.empresa_repository.create(codigo, nome, None, email, contato, obs)
                 self._log(
                     "CADASTRO_EMPRESA",
                     "empresa",
                     empresa_id,
-                    self._build_company_description("cadastrou", nome, codigo, meios, email, contato),
+                    self._build_company_description("cadastrou", nome, codigo, email, contato, obs),
                     empresa_id=empresa_id,
                     empresa_nome=nome,
                 )
@@ -76,52 +76,53 @@ class EmpresaService:
         self.update_empresa(
             empresa_id,
             nome_empresa,
-            empresa.get("meios_recebimento"),
             empresa.get("email_contato"),
             empresa.get("nome_contato"),
+            empresa.get("observacao"),
         )
 
     def update_empresa(
         self,
         empresa_id: int,
         nome_empresa: str,
-        meios_recebimento: list[str] | tuple[str, ...] | str | None = None,
         email_contato: str | None = None,
         nome_contato: str | None = None,
+        observacao: str | None = None,
     ) -> None:
         nome = self._normalize_name(nome_empresa, "O nome da empresa nao pode ficar vazio.")
-        meios = self._normalize_delivery_methods(meios_recebimento)
         email = self._normalize_optional_email(email_contato)
         contato = self._normalize_optional_text(nome_contato)
+        obs = self._normalize_observacao(observacao)
 
-        with self.empresa_repository.db_manager.connect():
-            empresa = self.get_empresa(empresa_id)
-            self.empresa_repository.update_details(empresa_id, nome, meios, email, contato)
+        try:
+            with self.empresa_repository.db_manager.connect():
+                empresa = self.get_empresa(empresa_id)
+                self.empresa_repository.update_details(empresa_id, nome, None, email, contato, obs)
 
-            changes = []
-            if empresa["nome_empresa"] != nome:
-                changes.append(f'nome: "{empresa["nome_empresa"]}" -> "{nome}"')
-            if (empresa.get("meios_recebimento") or "") != (meios or ""):
-                changes.append(
-                    f'meios de recebimento: "{empresa.get("meios_recebimento") or "-"}" -> "{meios or "-"}"'
-                )
-            if (empresa.get("email_contato") or "") != (email or ""):
-                changes.append(f'email: "{empresa.get("email_contato") or "-"}" -> "{email or "-"}"')
-            if (empresa.get("nome_contato") or "") != (contato or ""):
-                changes.append(f'contato: "{empresa.get("nome_contato") or "-"}" -> "{contato or "-"}"')
+                changes = []
+                if empresa["nome_empresa"] != nome:
+                    changes.append(f'nome: "{empresa["nome_empresa"]}" -> "{nome}"')
+                if (empresa.get("email_contato") or "") != (email or ""):
+                    changes.append(f'email: "{empresa.get("email_contato") or "-"}" -> "{email or "-"}"')
+                if (empresa.get("nome_contato") or "") != (contato or ""):
+                    changes.append(f'contato: "{empresa.get("nome_contato") or "-"}" -> "{contato or "-"}"')
+                if (empresa.get("observacao") or "") != (obs or ""):
+                    changes.append(f'observacao: "{empresa.get("observacao") or "-"}" -> "{obs or "-"}"')
 
-            if changes:
-                self._log(
-                    "EDICAO_EMPRESA",
-                    "empresa",
-                    empresa_id,
-                    (
-                        f'Usuario {self._actor_name()} atualizou a empresa "{nome}". '
-                        f'Alteracoes: {"; ".join(changes)}.'
-                    ),
-                    empresa_id=empresa_id,
-                    empresa_nome=nome,
-                )
+                if changes:
+                    self._log(
+                        "EDICAO_EMPRESA",
+                        "empresa",
+                        empresa_id,
+                        (
+                            f'Usuario {self._actor_name()} atualizou a empresa "{nome}". '
+                            f'Alteracoes: {"; ".join(changes)}.'
+                        ),
+                        empresa_id=empresa_id,
+                        empresa_nome=nome,
+                    )
+        except sqlite3.IntegrityError as exc:
+            raise ValidationError("Nao foi possivel atualizar a empresa.") from exc
 
     def set_empresa_ativa(self, empresa_id: int, ativa: bool) -> None:
         ativo_int = 1 if ativa else 0
@@ -201,9 +202,6 @@ class EmpresaService:
             raise ValidationError(error_message)
         return normalized
 
-    def _normalize_delivery_methods(self, methods: list[str] | tuple[str, ...] | str | None) -> str | None:
-        return normalize_delivery_methods(methods)
-
     def _normalize_optional_email(self, email: str | None) -> str | None:
         normalized = self._normalize_optional_text(email)
         if not normalized:
@@ -216,6 +214,14 @@ class EmpresaService:
         normalized = str(value or "").strip()
         return normalized or None
 
+    def _normalize_observacao(self, value: str | None) -> str | None:
+        normalized = self._normalize_optional_text(value)
+        if normalized and len(normalized) > MAX_COMPANY_OBSERVATION_LENGTH:
+            raise ValidationError(
+                f"A observacao deve ter no maximo {MAX_COMPANY_OBSERVATION_LENGTH} caracteres."
+            )
+        return normalized
+
     def _normalize_optional_directory(self, value: str | None) -> str | None:
         normalized = self._normalize_optional_text(value)
         if not normalized:
@@ -227,17 +233,17 @@ class EmpresaService:
         action_text: str,
         nome_empresa: str,
         codigo_empresa: int,
-        meios_recebimento: str | None,
         email_contato: str | None,
         nome_contato: str | None,
+        observacao: str | None = None,
     ) -> str:
         details = [f'Usuario {self._actor_name()} {action_text} a empresa "{nome_empresa}" de codigo {codigo_empresa}.']
-        if meios_recebimento:
-            details.append(f"Meios de recebimento: {meios_recebimento}.")
         if email_contato:
             details.append(f"Email: {email_contato}.")
         if nome_contato:
             details.append(f"Contato: {nome_contato}.")
+        if observacao:
+            details.append(f"Observacao: {observacao}.")
         return " ".join(details)
 
     def _actor_name(self) -> str:

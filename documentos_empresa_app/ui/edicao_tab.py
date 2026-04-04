@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from documentos_empresa_app.ui.delivery_methods_field import DeliveryMethodsField
+from documentos_empresa_app.utils.common import MAX_COMPANY_OBSERVATION_LENGTH
 from documentos_empresa_app.utils.helpers import CompanySelector, ValidationError
 
 
@@ -20,6 +21,7 @@ class EdicaoTab(ttk.Frame):
         self.email_contato_var = tk.StringVar()
         self.nome_contato_var = tk.StringVar()
         self.situacao_var = tk.StringVar(value="Nenhuma empresa carregada.")
+        self.observacao_counter_var = tk.StringVar(value=f"0/{MAX_COMPANY_OBSERVATION_LENGTH}")
         self.nome_documento_var = tk.StringVar()
         self.tipo_var = tk.StringVar()
 
@@ -52,25 +54,30 @@ class EdicaoTab(ttk.Frame):
         ttk.Label(company_frame, text="Nome de contato (opcional)").grid(row=0, column=3, sticky="w")
         ttk.Entry(company_frame, textvariable=self.nome_contato_var).grid(row=1, column=3, sticky="ew", padx=(0, 10))
 
-        self.delivery_field = DeliveryMethodsField(
+        ttk.Label(
             company_frame,
-            title="Meios de recebimento",
-            dialog_title="Edicao",
-            delivery_method_service=self.services.delivery_method_service,
+            text=f"Observacao livre (opcional, max {MAX_COMPANY_OBSERVATION_LENGTH} caracteres)",
+        ).grid(row=2, column=0, columnspan=4, sticky="w", pady=(10, 0))
+        self.observacao_text = tk.Text(company_frame, height=4, wrap="word")
+        self.observacao_text.grid(row=3, column=0, columnspan=4, sticky="ew")
+        self.observacao_text.bind("<<Modified>>", self._handle_observacao_modified)
+        ttk.Label(company_frame, textvariable=self.observacao_counter_var).grid(
+            row=4, column=0, columnspan=4, sticky="e", pady=(4, 8)
         )
-        self.delivery_field.grid(row=2, column=0, columnspan=6, sticky="ew", pady=(10, 8))
 
         ttk.Button(company_frame, text="Salvar dados", command=self.save_company_name).grid(
-            row=4, column=0, sticky="ew", padx=(0, 8)
+            row=5, column=0, sticky="ew", padx=(0, 8)
         )
         ttk.Button(company_frame, text="Inativar", command=lambda: self.set_company_active(False)).grid(
-            row=4, column=1, sticky="ew", padx=(0, 8)
+            row=5, column=1, sticky="ew", padx=(0, 8)
         )
         ttk.Button(company_frame, text="Reativar", command=lambda: self.set_company_active(True)).grid(
-            row=4, column=2, sticky="ew", padx=(0, 8)
+            row=5, column=2, sticky="ew", padx=(0, 8)
         )
-        ttk.Button(company_frame, text="Excluir empresa", command=self.delete_company).grid(row=4, column=3, sticky="ew")
-        ttk.Label(company_frame, textvariable=self.situacao_var).grid(row=5, column=0, columnspan=6, sticky="w", pady=(8, 0))
+        ttk.Button(company_frame, text="Excluir empresa", command=self.delete_company).grid(row=5, column=3, sticky="ew")
+        ttk.Label(company_frame, textvariable=self.situacao_var).grid(
+            row=6, column=0, columnspan=6, sticky="w", pady=(8, 0)
+        )
 
         company_frame.columnconfigure(1, weight=1)
         company_frame.columnconfigure(2, weight=1)
@@ -81,15 +88,17 @@ class EdicaoTab(ttk.Frame):
 
         self.tree = ttk.Treeview(
             document_frame,
-            columns=("nome", "tipo"),
+            columns=("nome", "recebimento", "tipo"),
             show="headings",
             selectmode="extended",
             height=14,
         )
         self.tree.heading("nome", text="Nome do documento")
+        self.tree.heading("recebimento", text="Recebimento")
         self.tree.heading("tipo", text="Tipo")
-        self.tree.column("nome", width=520)
-        self.tree.column("tipo", width=220)
+        self.tree.column("nome", width=360)
+        self.tree.column("recebimento", width=220)
+        self.tree.column("tipo", width=180)
         self.tree.grid(row=0, column=0, rowspan=4, sticky="nsew")
         self.tree.bind("<<TreeviewSelect>>", self.load_selected_document)
 
@@ -106,8 +115,16 @@ class EdicaoTab(ttk.Frame):
         self.tipo_combo = ttk.Combobox(document_frame, textvariable=self.tipo_var, state="readonly")
         self.tipo_combo.grid(row=3, column=2, sticky="ew", padx=(12, 0), pady=(0, 8))
 
+        self.document_delivery_field = DeliveryMethodsField(
+            document_frame,
+            title="Meios de recebimento do documento",
+            dialog_title="Edicao",
+            delivery_method_service=self.services.delivery_method_service,
+        )
+        self.document_delivery_field.grid(row=4, column=2, sticky="ew", padx=(12, 0), pady=(0, 8))
+
         button_row = ttk.Frame(document_frame)
-        button_row.grid(row=4, column=2, sticky="ew", padx=(12, 0))
+        button_row.grid(row=5, column=2, sticky="ew", padx=(12, 0))
         ttk.Button(button_row, text="Salvar documento", command=self.save_document).pack(side="left", padx=(0, 8))
         ttk.Button(button_row, text="Limpar campos", command=self.clear_document_fields).pack(side="left", padx=(0, 8))
         ttk.Button(button_row, text="Excluir selecionados", command=self.delete_selected_documents).pack(side="left")
@@ -132,7 +149,7 @@ class EdicaoTab(ttk.Frame):
         self.nome_empresa_var.set(company["nome_empresa"])
         self.email_contato_var.set(company.get("email_contato") or "")
         self.nome_contato_var.set(company.get("nome_contato") or "")
-        self.delivery_field.set_values(company.get("meios_recebimento"))
+        self._set_observacao_text(company.get("observacao"))
         self.situacao_var.set("Empresa ativa." if company["ativa"] else "Empresa inativa.")
         self.refresh_document_list()
 
@@ -142,10 +159,35 @@ class EdicaoTab(ttk.Frame):
         self.nome_empresa_var.set("")
         self.email_contato_var.set("")
         self.nome_contato_var.set("")
-        self.delivery_field.clear()
+        self._set_observacao_text("")
         self.situacao_var.set("Nenhuma empresa carregada.")
         self.tree.delete(*self.tree.get_children())
         self.clear_document_fields()
+
+    def _get_observacao_text(self) -> str:
+        return self.observacao_text.get("1.0", "end-1c")
+
+    def _set_observacao_text(self, value: str | None) -> None:
+        self.observacao_text.delete("1.0", "end")
+        normalized_value = str(value or "")[:MAX_COMPANY_OBSERVATION_LENGTH]
+        if normalized_value:
+            self.observacao_text.insert("1.0", normalized_value)
+        self._update_observacao_counter()
+        self.observacao_text.edit_modified(False)
+
+    def _update_observacao_counter(self) -> None:
+        self.observacao_counter_var.set(
+            f"{len(self._get_observacao_text())}/{MAX_COMPANY_OBSERVATION_LENGTH}"
+        )
+
+    def _handle_observacao_modified(self, _event=None) -> None:
+        current_text = self._get_observacao_text()
+        if len(current_text) > MAX_COMPANY_OBSERVATION_LENGTH:
+            self.observacao_text.delete("1.0", "end")
+            self.observacao_text.insert("1.0", current_text[:MAX_COMPANY_OBSERVATION_LENGTH])
+            self.bell()
+        self._update_observacao_counter()
+        self.observacao_text.edit_modified(False)
 
     def refresh_document_list(self) -> None:
         self.tree.delete(*self.tree.get_children())
@@ -156,7 +198,11 @@ class EdicaoTab(ttk.Frame):
                 "",
                 "end",
                 iid=str(documento["id"]),
-                values=(documento["nome_documento"], documento["nome_tipo"]),
+                values=(
+                    documento["nome_documento"],
+                    documento.get("meios_recebimento") or "-",
+                    documento["nome_tipo"],
+                ),
             )
 
     def save_company_name(self) -> None:
@@ -167,9 +213,9 @@ class EdicaoTab(ttk.Frame):
             self.services.empresa_service.update_empresa(
                 self.current_company_id,
                 self.nome_empresa_var.get(),
-                self.delivery_field.get_values(),
                 self.email_contato_var.get(),
                 self.nome_contato_var.get(),
+                self._get_observacao_text(),
             )
         except ValidationError as exc:
             messagebox.showerror("Edicao", str(exc), parent=self)
@@ -210,10 +256,12 @@ class EdicaoTab(ttk.Frame):
         tipo = self.services.tipo_service.get_tipo(documento["tipo_documento_id"])
         self.nome_documento_var.set(documento["nome_documento"])
         self.tipo_var.set(tipo["nome_tipo"])
+        self.document_delivery_field.set_values(documento.get("meios_recebimento"))
 
     def clear_document_fields(self) -> None:
         self.nome_documento_var.set("")
         self.tipo_var.set("")
+        self.document_delivery_field.clear()
         selection = self.tree.selection()
         if selection:
             self.tree.selection_remove(*selection)
@@ -232,7 +280,12 @@ class EdicaoTab(ttk.Frame):
             return
         documento_id = int(selection[0])
         try:
-            self.services.documento_service.update_documento(documento_id, tipo_id, self.nome_documento_var.get())
+            self.services.documento_service.update_documento(
+                documento_id,
+                tipo_id,
+                self.nome_documento_var.get(),
+                self.document_delivery_field.get_values(),
+            )
         except ValidationError as exc:
             messagebox.showerror("Edicao", str(exc), parent=self)
             return

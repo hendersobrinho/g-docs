@@ -138,12 +138,12 @@ E a camada de regras de negocio.
 | `auth_service.py` | autenticacao de usuario |
 | `audit_service.py` | gravacao centralizada de logs |
 | `database_maintenance_service.py` | backup e restauracao do banco |
-| `delivery_method_service.py` | regras dos meios de recebimento do sistema |
+| `delivery_method_service.py` | regras dos meios de recebimento do sistema e propagacao para documentos |
 | `empresa_service.py` | regras de empresas |
 | `tipo_service.py` | regras de tipos |
 | `documento_service.py` | regras de documentos |
 | `periodo_service.py` | regras de periodos |
-| `status_service.py` | status mensal, regra de encerramento e montagem da visao de controle |
+| `status_service.py` | status mensal, ocorrencia especial por tipo, encerramento e montagem da visao de controle |
 | `import_service.py` | importacao via Excel |
 | `pending_report_service.py` | exportacao do relatorio de pendencias |
 | `session_service.py` | sessao do usuario logado |
@@ -166,7 +166,7 @@ Contem a interface grafica Tkinter.
 | `periodo_tab.py` | geracao de periodos e exclusao de ano |
 | `user_tab.py` | gestao de usuarios, restrita a admin |
 | `log_tab.py` | visualizacao de logs, restrita a admin |
-| `delivery_methods_field.py` | componente reutilizavel para meios de recebimento |
+| `delivery_methods_field.py` | componente reutilizavel para meios de recebimento por documento |
 
 #### Pasta `utils/`
 
@@ -174,7 +174,7 @@ Reune funcoes auxiliares, constantes, seguranca e integracoes com ambiente.
 
 | Arquivo | Responsabilidade |
 |---|---|
-| `common.py` | constantes globais, funcoes de apoio e `ValidationError` |
+| `common.py` | constantes globais, regras reutilizaveis de ocorrencia, funcoes de apoio e `ValidationError` |
 | `helpers.py` | configuracao, selecao do banco, componentes auxiliares de UI |
 | `display.py` | detecao de monitor para posicionamento da janela |
 | `resources.py` | localizacao de icones em runtime e build |

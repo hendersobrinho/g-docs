@@ -3,7 +3,13 @@ from __future__ import annotations
 import re
 
 from documentos_empresa_app.database.connection import DatabaseManager
-from documentos_empresa_app.utils.common import DOCUMENT_DELIVERY_OPTIONS, normalize_delivery_methods
+from documentos_empresa_app.utils.common import (
+    DOCUMENT_DELIVERY_OPTIONS,
+    MAX_COMPANY_OBSERVATION_LENGTH,
+    normalize_delivery_methods,
+    normalize_type_occurrence_rule,
+    TYPE_OCCURRENCE_MENSAL,
+)
 from documentos_empresa_app.utils.security import hash_password
 from documentos_empresa_app.utils.type_names import canonicalize_tipo_name
 
@@ -28,6 +34,7 @@ SCHEMA_STATEMENTS = (
         meios_recebimento TEXT NULL,
         email_contato TEXT NULL,
         nome_contato TEXT NULL,
+        observacao TEXT NULL CHECK (observacao IS NULL OR length(observacao) <= 255),
         diretorio_documentos TEXT NULL,
         ativa INTEGER NOT NULL DEFAULT 1 CHECK (ativa IN (0, 1))
     )
@@ -35,7 +42,9 @@ SCHEMA_STATEMENTS = (
     """
     CREATE TABLE IF NOT EXISTS tipos_documento (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome_tipo TEXT NOT NULL UNIQUE COLLATE NOCASE
+        nome_tipo TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        regra_ocorrencia TEXT NOT NULL DEFAULT 'mensal'
+            CHECK (regra_ocorrencia IN ('mensal', 'trimestral', 'anual_janeiro'))
     )
     """,
     """
@@ -49,6 +58,7 @@ SCHEMA_STATEMENTS = (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         empresa_id INTEGER NOT NULL,
         tipo_documento_id INTEGER NOT NULL,
+        meios_recebimento TEXT NULL,
         nome_documento TEXT NOT NULL COLLATE NOCASE,
         FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE,
         FOREIGN KEY (tipo_documento_id) REFERENCES tipos_documento(id) ON DELETE RESTRICT,
@@ -129,7 +139,13 @@ def initialize_schema(db_manager: DatabaseManager) -> None:
             connection.execute(statement)
 
         ensure_empresa_extra_columns(connection)
+        ensure_tipo_extra_columns(connection)
+        ensure_documento_extra_columns(connection)
+        ensure_empresa_observacao_constraints(connection)
+        normalize_tipo_occurrence_rules(connection)
         normalize_empresa_delivery_methods(connection)
+        migrate_empresa_delivery_methods_to_documentos(connection)
+        normalize_documento_delivery_methods(connection)
         ensure_log_metadata_columns(connection)
         ensure_status_audit_columns(connection)
         backfill_log_metadata(connection)
@@ -137,11 +153,11 @@ def initialize_schema(db_manager: DatabaseManager) -> None:
         for tipo in INITIAL_TYPES:
             connection.execute(
                 """
-                INSERT INTO tipos_documento (nome_tipo)
-                VALUES (?)
+                INSERT INTO tipos_documento (nome_tipo, regra_ocorrencia)
+                VALUES (?, ?)
                 ON CONFLICT(nome_tipo) DO NOTHING
                 """,
-                (tipo,),
+                (tipo, TYPE_OCCURRENCE_MENSAL),
             )
 
         for method in INITIAL_DELIVERY_METHODS:
@@ -167,12 +183,84 @@ def ensure_empresa_extra_columns(connection) -> None:
         "meios_recebimento": "TEXT NULL",
         "email_contato": "TEXT NULL",
         "nome_contato": "TEXT NULL",
+        "observacao": f"TEXT NULL CHECK (observacao IS NULL OR length(observacao) <= {MAX_COMPANY_OBSERVATION_LENGTH})",
         "diretorio_documentos": "TEXT NULL",
     }
     for column_name, column_definition in required_columns.items():
         if column_name in columns:
             continue
         connection.execute(f"ALTER TABLE empresas ADD COLUMN {column_name} {column_definition}")
+
+
+def ensure_tipo_extra_columns(connection) -> None:
+    columns = {
+        row["name"]: row
+        for row in connection.execute("PRAGMA table_info(tipos_documento)").fetchall()
+    }
+    required_columns = {
+        "regra_ocorrencia": f"TEXT NOT NULL DEFAULT '{TYPE_OCCURRENCE_MENSAL}'",
+    }
+    for column_name, column_definition in required_columns.items():
+        if column_name in columns:
+            continue
+        connection.execute(f"ALTER TABLE tipos_documento ADD COLUMN {column_name} {column_definition}")
+
+
+def ensure_documento_extra_columns(connection) -> None:
+    columns = {
+        row["name"]: row
+        for row in connection.execute("PRAGMA table_info(documentos_empresa)").fetchall()
+    }
+    required_columns = {
+        "meios_recebimento": "TEXT NULL",
+    }
+    for column_name, column_definition in required_columns.items():
+        if column_name in columns:
+            continue
+        connection.execute(f"ALTER TABLE documentos_empresa ADD COLUMN {column_name} {column_definition}")
+
+
+def normalize_tipo_occurrence_rules(connection) -> None:
+    rows = connection.execute(
+        """
+        SELECT id, regra_ocorrencia
+        FROM tipos_documento
+        """
+    ).fetchall()
+
+    for row in rows:
+        normalized = normalize_type_occurrence_rule(row["regra_ocorrencia"])
+        if normalized == row["regra_ocorrencia"]:
+            continue
+        connection.execute(
+            "UPDATE tipos_documento SET regra_ocorrencia = ? WHERE id = ?",
+            (normalized, row["id"]),
+        )
+
+
+def ensure_empresa_observacao_constraints(connection) -> None:
+    connection.execute(
+        f"""
+        CREATE TRIGGER IF NOT EXISTS trg_empresas_observacao_insert
+        BEFORE INSERT ON empresas
+        FOR EACH ROW
+        WHEN NEW.observacao IS NOT NULL AND length(NEW.observacao) > {MAX_COMPANY_OBSERVATION_LENGTH}
+        BEGIN
+            SELECT RAISE(FAIL, 'observacao_too_long');
+        END
+        """
+    )
+    connection.execute(
+        f"""
+        CREATE TRIGGER IF NOT EXISTS trg_empresas_observacao_update
+        BEFORE UPDATE OF observacao ON empresas
+        FOR EACH ROW
+        WHEN NEW.observacao IS NOT NULL AND length(NEW.observacao) > {MAX_COMPANY_OBSERVATION_LENGTH}
+        BEGIN
+            SELECT RAISE(FAIL, 'observacao_too_long');
+        END
+        """
+    )
 
 
 def normalize_empresa_delivery_methods(connection) -> None:
@@ -190,6 +278,47 @@ def normalize_empresa_delivery_methods(connection) -> None:
             continue
         connection.execute(
             "UPDATE empresas SET meios_recebimento = ? WHERE id = ?",
+            (normalized, row["id"]),
+        )
+
+
+def migrate_empresa_delivery_methods_to_documentos(connection) -> None:
+    rows = connection.execute(
+        """
+        SELECT d.id, e.meios_recebimento
+        FROM documentos_empresa d
+        INNER JOIN empresas e ON e.id = d.empresa_id
+        WHERE (d.meios_recebimento IS NULL OR trim(d.meios_recebimento) = '')
+          AND e.meios_recebimento IS NOT NULL
+          AND trim(e.meios_recebimento) <> ''
+        """
+    ).fetchall()
+
+    for row in rows:
+        normalized = _normalize_delivery_methods_value(row["meios_recebimento"])
+        if not normalized:
+            continue
+        connection.execute(
+            "UPDATE documentos_empresa SET meios_recebimento = ? WHERE id = ?",
+            (normalized, row["id"]),
+        )
+
+
+def normalize_documento_delivery_methods(connection) -> None:
+    rows = connection.execute(
+        """
+        SELECT id, meios_recebimento
+        FROM documentos_empresa
+        WHERE meios_recebimento IS NOT NULL
+        """
+    ).fetchall()
+
+    for row in rows:
+        normalized = _normalize_delivery_methods_value(row["meios_recebimento"])
+        if normalized == row["meios_recebimento"]:
+            continue
+        connection.execute(
+            "UPDATE documentos_empresa SET meios_recebimento = ? WHERE id = ?",
             (normalized, row["id"]),
         )
 
@@ -338,7 +467,7 @@ def ensure_default_admin(connection) -> None:
 def consolidate_duplicate_types(connection) -> None:
     rows = connection.execute(
         """
-        SELECT id, nome_tipo
+        SELECT id, nome_tipo, regra_ocorrencia
         FROM tipos_documento
         ORDER BY id
         """
@@ -353,6 +482,7 @@ def consolidate_duplicate_types(connection) -> None:
     for canonical_name, items in grouped_rows.items():
         canonical_row = _select_canonical_type_row(items, canonical_name)
         canonical_type_id = canonical_row["id"]
+        canonical_rule = _select_canonical_type_rule(items, canonical_row)
 
         for row in items:
             if row["id"] == canonical_type_id:
@@ -360,10 +490,10 @@ def consolidate_duplicate_types(connection) -> None:
             _merge_type_into(connection, row["id"], canonical_type_id)
             connection.execute("DELETE FROM tipos_documento WHERE id = ?", (row["id"],))
 
-        if canonical_row["nome_tipo"] != canonical_name:
+        if canonical_row["nome_tipo"] != canonical_name or canonical_row["regra_ocorrencia"] != canonical_rule:
             connection.execute(
-                "UPDATE tipos_documento SET nome_tipo = ? WHERE id = ?",
-                (canonical_name, canonical_type_id),
+                "UPDATE tipos_documento SET nome_tipo = ?, regra_ocorrencia = ? WHERE id = ?",
+                (canonical_name, canonical_rule, canonical_type_id),
             )
 
 
@@ -372,6 +502,18 @@ def _select_canonical_type_row(items: list[dict], canonical_name: str) -> dict:
     if exact_match:
         return exact_match
     return min(items, key=lambda item: item["id"])
+
+
+def _select_canonical_type_rule(items: list[dict], canonical_row: dict) -> str:
+    canonical_rule = normalize_type_occurrence_rule(canonical_row.get("regra_ocorrencia"))
+    if canonical_rule != TYPE_OCCURRENCE_MENSAL:
+        return canonical_rule
+
+    for item in items:
+        item_rule = normalize_type_occurrence_rule(item.get("regra_ocorrencia"))
+        if item_rule != TYPE_OCCURRENCE_MENSAL:
+            return item_rule
+    return TYPE_OCCURRENCE_MENSAL
 
 
 def _merge_type_into(connection, source_type_id: int, target_type_id: int) -> None:

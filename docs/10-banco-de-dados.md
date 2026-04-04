@@ -11,16 +11,17 @@
 | `id` | INTEGER | PK, autoincrement |
 | `codigo_empresa` | INTEGER | obrigatorio, unico |
 | `nome_empresa` | TEXT | obrigatorio, `COLLATE NOCASE` |
-| `meios_recebimento` | TEXT | opcional |
+| `meios_recebimento` | TEXT | legado/compatibilidade, nao usado como regra principal atual |
 | `email_contato` | TEXT | opcional |
 | `nome_contato` | TEXT | opcional |
+| `observacao` | TEXT | opcional, maximo 255 caracteres |
 | `diretorio_documentos` | TEXT | opcional |
 | `ativa` | INTEGER | default `1`, check `0/1` |
 
-Uso:
+Observacao:
 
-- base de todas as consultas e cadastros
-- acessada principalmente por `EmpresaRepository`
+- o campo `meios_recebimento` foi mantido para compatibilidade com bancos antigos
+- a regra atual do sistema usa meios de recebimento por documento
 
 ### `tipos_documento`
 
@@ -28,12 +29,13 @@ Uso:
 |---|---|---|
 | `id` | INTEGER | PK |
 | `nome_tipo` | TEXT | obrigatorio, unico, `COLLATE NOCASE` |
+| `regra_ocorrencia` | TEXT | obrigatorio, `mensal`, `trimestral` ou `anual_janeiro` |
 
 Uso:
 
 - agrupar documentos
-- alimentar comboboxes de tipo
-- consolidar aliases textuais
+- alimentar seletores de tipo
+- definir em quais meses aquele tipo deve ser cobrado
 
 ### `meios_recebimento_sistema`
 
@@ -44,8 +46,8 @@ Uso:
 
 Uso:
 
-- alimentar a manutencao de meios de recebimento na interface
-- permitir renomear ou remover meios globais sem apagar o historico das empresas
+- alimentar o componente de selecao de meios
+- permitir renomear/remover meios globais sem apagar historico dos documentos
 
 ### `documentos_empresa`
 
@@ -54,6 +56,7 @@ Uso:
 | `id` | INTEGER | PK |
 | `empresa_id` | INTEGER | FK para `empresas`, `ON DELETE CASCADE` |
 | `tipo_documento_id` | INTEGER | FK para `tipos_documento`, `ON DELETE RESTRICT` |
+| `meios_recebimento` | TEXT | opcional |
 | `nome_documento` | TEXT | obrigatorio, `COLLATE NOCASE` |
 
 Restricao importante:
@@ -79,9 +82,14 @@ Restricao:
 | `id` | INTEGER | PK |
 | `documento_empresa_id` | INTEGER | FK para `documentos_empresa`, `ON DELETE CASCADE` |
 | `periodo_id` | INTEGER | FK para `periodos`, `ON DELETE CASCADE` |
-| `status` | TEXT | `NULL`, `Recebido`, `Pendente`, `Encerrado` |
+| `status` | TEXT | `NULL`, `Recebido`, `Pendente` ou `Encerrado` |
 | `updated_by_user_id` | INTEGER | opcional, usuario que fez a ultima alteracao |
 | `updated_at` | TEXT | timestamp da ultima alteracao |
+
+Observacao importante:
+
+- `Nao cobrar` nao e persistido nessa tabela
+- esse valor e calculado dinamicamente pela regra de ocorrencia do tipo
 
 Restricao:
 
@@ -140,18 +148,25 @@ Restricao:
 - excluir documento remove status mensais associados
 - excluir periodo remove status mensais associados
 - excluir tipo e bloqueado se houver documento usando o tipo
-- excluir usuario nao apaga log; o `usuario_id` fica `NULL`
+- excluir usuario nao apaga log; o `usuario_id` pode ficar `NULL`
 
-## 10.4 Classes que acessam cada tabela
+## 10.4 Compatibilidade e migracoes relevantes
 
-| Tabela | Repositório principal | Servicos que usam |
+- bancos antigos que tinham meio de recebimento na empresa continuam abrindo
+- o schema copia `meios_recebimento` legado da empresa para documentos que ainda nao tenham esse dado
+- `regra_ocorrencia` e adicionada automaticamente aos tipos em bancos antigos
+- observacao de empresa e garantida com validacao em servico e trigger/check no banco
+
+## 10.5 Classes que acessam cada tabela
+
+| Tabela | Repositorio principal | Servicos que usam |
 |---|---|---|
-| `empresas` | `EmpresaRepository` | `EmpresaService`, `DocumentoService`, `StatusService` |
+| `empresas` | `EmpresaRepository` | `EmpresaService`, `DocumentoService`, `StatusService`, `PendingReportService` |
 | `meios_recebimento_sistema` | `DeliveryMethodRepository` | `DeliveryMethodService` |
 | `tipos_documento` | `TipoRepository` | `TipoService`, `DocumentoService`, `ImportService` |
-| `documentos_empresa` | `DocumentoRepository` | `DocumentoService`, `StatusService`, `ImportService` |
-| `periodos` | `PeriodoRepository` | `PeriodoService`, `StatusService` |
-| `status_documento_mensal` | `StatusRepository` | `StatusService` |
+| `documentos_empresa` | `DocumentoRepository` | `DocumentoService`, `StatusService`, `PendingReportService`, `ImportService` |
+| `periodos` | `PeriodoRepository` | `PeriodoService`, `StatusService`, `PendingReportService` |
+| `status_documento_mensal` | `StatusRepository` | `StatusService`, `PendingReportService` |
 | `usuarios` | `UsuarioRepository` | `AuthService`, `UserService` |
 | `sessoes_lembradas` | `RememberedSessionRepository` | `AuthService` |
 | `logs` | `LogRepository` | `AuditService`, `LogService` |

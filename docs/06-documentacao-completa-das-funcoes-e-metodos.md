@@ -40,7 +40,9 @@
 - O que faz:
   - cria tabelas e indices
   - aplica migracoes de colunas extras
+  - normaliza regra de ocorrencia dos tipos
   - normaliza meios de recebimento
+  - migra meios legados da empresa para documentos quando necessario
   - garante colunas extras nos logs
   - faz backfill de metadados de logs
   - semeia tipos iniciais
@@ -48,13 +50,13 @@
   - consolida tipos duplicados
 - Quando e chamada: toda vez que o sistema monta `ApplicationServices`
 
-### `ensure_empresa_extra_columns(connection)`
+### `ensure_empresa_extra_columns(connection)` e `ensure_tipo_extra_columns(connection)`
 
-- Garante compatibilidade com bancos antigos que nao tinham `meios_recebimento`, `email_contato` e `nome_contato`.
+- Garantem compatibilidade com bancos antigos que nao tinham colunas mais recentes de empresa e tipo.
 
-### `normalize_empresa_delivery_methods(connection)`
+### `normalize_empresa_delivery_methods(connection)`, `migrate_empresa_delivery_methods_to_documentos(connection)` e `normalize_documento_delivery_methods(connection)`
 
-- Reescreve valores de `meios_recebimento` em formato normalizado sem perder dados legados.
+- Normalizam valores de `meios_recebimento` e preservam compatibilidade com o modelo antigo por empresa.
 
 ### `ensure_log_metadata_columns(connection)` e `backfill_log_metadata(connection)`
 
@@ -82,8 +84,8 @@
 
 - Valida codigo inteiro
 - Valida nome
-- Normaliza meios de recebimento
 - Valida email opcional
+- Valida observacao com limite de 255 caracteres
 - Garante unicidade de codigo
 - Persiste empresa
 - Gera log `CADASTRO_EMPRESA`
@@ -110,13 +112,14 @@
 ### `TipoService.get_or_create_tipo(nome_tipo)`
 
 - Canonicaliza o nome
-- Reaproveita tipo existente ou cria um novo
+- Reaproveita tipo existente ou cria um novo com ocorrencia mensal por padrao
 - Importante no fluxo de importacao de documentos
 
 ### `DocumentoService.create_documento(...)`
 
 - Garante existencia da empresa e do tipo
 - Valida nome
+- Normaliza meios de recebimento do documento
 - Bloqueia duplicidade `(empresa, tipo, nome)`
 - Persiste documento
 - Registra `CADASTRO_DOCUMENTO`
@@ -159,6 +162,7 @@
 - Valida status
 - Garante existencia de documento e periodo
 - Detecta status anterior
+- Bloqueia alteracao em meses fora da ocorrencia do tipo
 - Impede gravacao depois de um encerramento anterior
 - Faz `upsert` do status
 - Se novo status for `Encerrado`, remove status futuros
@@ -173,19 +177,23 @@
 - Le documentos da empresa
 - Le status do intervalo
 - Le encerramentos
+- Calcula meses cobraveis conforme a ocorrencia do tipo
+- Marca `Nao cobrar` automaticamente fora da ocorrencia
 - Monta estrutura pronta para renderizacao na aba `Controle`
 - Agrupa por `tipo_documento_id`
 
 ### `ImportService.import_empresas(file_path)`
 
 - Abre workbook via `openpyxl`
-- Le colunas A e B
+- Le o layout atual de empresas
+- Mantem compatibilidade com o layout legado de 2 colunas
 - Tenta cadastrar empresa por linha
 - Acumula quantidade importada, falhas e mensagens de erro
 
 ### `ImportService.import_documentos(file_path, empresa_id)`
 
-- Le colunas A e B
+- Le o layout atual com `meios_recebimento`, `nome_documento` e `nome_tipo`
+- Mantem compatibilidade com o layout legado de 2 colunas
 - Garante tipo informado
 - Reaproveita ou cria tipo
 - Tenta cadastrar documento
@@ -233,6 +241,10 @@
 ### `parse_delivery_methods()` e `normalize_delivery_methods()`
 
 - Papel: normalizar meios de recebimento, canonicalizando valores conhecidos e preservando valores legados
+
+### `normalize_type_occurrence_rule()`, `is_chargeable_period()` e `build_chargeable_closure_key_map()`
+
+- Papel: centralizar a regra de ocorrencia especial dos tipos e o calculo de encerramento valido para meses cobraveis
 
 ### `format_period_label()`, `month_key()`, `count_months_between()`
 

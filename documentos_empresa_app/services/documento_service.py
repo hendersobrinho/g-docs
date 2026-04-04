@@ -3,7 +3,7 @@ from __future__ import annotations
 from documentos_empresa_app.database.repositories import DocumentoRepository, EmpresaRepository, TipoRepository
 from documentos_empresa_app.services.audit_service import AuditService
 from documentos_empresa_app.services.session_service import SessionService
-from documentos_empresa_app.utils.common import ValidationError
+from documentos_empresa_app.utils.common import ValidationError, normalize_delivery_methods
 
 
 class DocumentoService:
@@ -36,8 +36,15 @@ class DocumentoService:
             self._ensure_tipo(tipo_documento_id)
         return self.documento_repository.list_distinct_names(tipo_documento_id=tipo_documento_id, search=search)
 
-    def create_documento(self, empresa_id: int, tipo_documento_id: int, nome_documento: str) -> int:
+    def create_documento(
+        self,
+        empresa_id: int,
+        tipo_documento_id: int,
+        nome_documento: str,
+        meios_recebimento: list[str] | tuple[str, ...] | str | None = None,
+    ) -> int:
         nome = self._normalize_name(nome_documento)
+        meios = self._normalize_delivery_methods(meios_recebimento)
         with self.documento_repository.db_manager.connect():
             empresa = self._ensure_empresa(empresa_id)
             tipo = self._ensure_tipo(tipo_documento_id)
@@ -45,22 +52,32 @@ class DocumentoService:
             if self.documento_repository.find_duplicate(empresa_id, tipo_documento_id, nome):
                 raise ValidationError("Ja existe um documento com esse nome para a empresa e tipo informados.")
 
-            documento_id = self.documento_repository.create(empresa_id, tipo_documento_id, nome)
+            documento_id = self.documento_repository.create(empresa_id, tipo_documento_id, meios, nome)
+            details = [
+                f'Usuario {self._actor_name()} cadastrou o documento "{nome}" '
+                f'para a empresa "{empresa["nome_empresa"]}" no tipo "{tipo["nome_tipo"]}".'
+            ]
+            if meios:
+                details.append(f"Meios de recebimento: {meios}.")
             self._log(
                 "CADASTRO_DOCUMENTO",
                 "documento",
                 documento_id,
-                (
-                    f'Usuario {self._actor_name()} cadastrou o documento "{nome}" '
-                    f'para a empresa "{empresa["nome_empresa"]}" no tipo "{tipo["nome_tipo"]}".'
-                ),
+                " ".join(details),
                 empresa_id=empresa["id"],
                 empresa_nome=empresa["nome_empresa"],
             )
         return documento_id
 
-    def update_documento(self, documento_id: int, tipo_documento_id: int, nome_documento: str) -> None:
+    def update_documento(
+        self,
+        documento_id: int,
+        tipo_documento_id: int,
+        nome_documento: str,
+        meios_recebimento: list[str] | tuple[str, ...] | str | None = None,
+    ) -> None:
         nome = self._normalize_name(nome_documento)
+        meios = self._normalize_delivery_methods(meios_recebimento)
         with self.documento_repository.db_manager.connect():
             documento = self.get_documento(documento_id)
             old_tipo = self._ensure_tipo(documento["tipo_documento_id"])
@@ -76,7 +93,7 @@ class DocumentoService:
             if duplicate:
                 raise ValidationError("Ja existe um documento com esse nome para a empresa e tipo informados.")
 
-            self.documento_repository.update(documento_id, tipo_documento_id, nome)
+            self.documento_repository.update(documento_id, tipo_documento_id, meios, nome)
             if documento["nome_documento"] != nome:
                 self._log(
                     "EDICAO_DOCUMENTO",
@@ -85,6 +102,18 @@ class DocumentoService:
                     (
                         f'Usuario {self._actor_name()} alterou o documento "{documento["nome_documento"]}" '
                         f'para "{nome}" na empresa "{empresa["nome_empresa"]}".'
+                    ),
+                    empresa_id=empresa["id"],
+                    empresa_nome=empresa["nome_empresa"],
+                )
+            if (documento.get("meios_recebimento") or "") != (meios or ""):
+                self._log(
+                    "EDICAO_DOCUMENTO",
+                    "documento",
+                    documento_id,
+                    (
+                        f'Usuario {self._actor_name()} alterou os meios de recebimento do documento "{nome}" '
+                        f'de "{documento.get("meios_recebimento") or "-"}" para "{meios or "-"}".'
                     ),
                     empresa_id=empresa["id"],
                     empresa_nome=empresa["nome_empresa"],
@@ -151,6 +180,9 @@ class DocumentoService:
         if not normalized:
             raise ValidationError("O nome do documento nao pode ficar vazio.")
         return normalized
+
+    def _normalize_delivery_methods(self, methods: list[str] | tuple[str, ...] | str | None) -> str | None:
+        return normalize_delivery_methods(methods)
 
     def _actor_name(self) -> str:
         if not self.session_service:

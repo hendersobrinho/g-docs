@@ -2,52 +2,39 @@
 
 # 17. Resumo Final
 
-O G-docs e um sistema desktop local estruturado em camadas simples:
+O G-docs continua estruturado em camadas simples:
 
-- `main.py` inicia tudo
+- `main.py` inicia o ciclo da aplicacao
 - `app_context.py` monta dependencias
-- `database/` cuida de persistencia e schema
+- `database/` cuida do schema, migracoes leves e persistencia
 - `services/` concentra regras de negocio
-- `ui/` apresenta as telas e abas
-- `utils/` reune configuracao, seguranca, monitor, icone e helpers
+- `ui/` organiza as telas
+- `utils/` reune constantes, helpers e funcoes transversais
 
-As classes mais importantes para entender o projeto sao:
+Os pontos centrais da versao atual sao:
 
-- `DatabaseManager`
-- `ApplicationServices`
-- `EmpresaService`
-- `DocumentoService`
-- `StatusService`
-- `UserService`
-- `MainWindow`
-- `ControleTab`
-- `CompanySelector`
+- observacao por empresa com limite consistente de 255 caracteres
+- meios de recebimento tratados no nivel do documento
+- importacao completa atualizada para o novo layout
+- tipos com ocorrencia mensal, trimestral ou anual em janeiro
+- exibicao automatica de `Nao cobrar` na grade mensal
+- relatorio de pendencias respeitando meses realmente cobraveis
 
-O fluxo principal do sistema e:
-
-1. resolver banco
-2. inicializar schema
-3. autenticar usuario
-4. abrir janela principal
-5. operar cadastros, periodos e controle mensal
-6. registrar logs de alteracoes
-
-As regras de negocio mais importantes sao:
+As regras de negocio mais importantes hoje sao:
 
 - unicidade de empresa por codigo
-- unicidade de documento por empresa+tipo+nome
+- unicidade de documento por empresa + tipo + nome
 - limite de 12 meses por consulta
 - regra de encerramento
-- permissao admin para usuarios/logs
-- preservacao do ultimo admin ativo
-- cascatas de exclusao coerentes
+- regra de ocorrencia especial por tipo
 - logs transacionais
+- permissao admin para usuarios e logs
 
-O melhor caminho para continuar evoluindo o projeto e:
+Direcao recomendada para evolucao:
 
 1. manter a separacao UI -> Services -> Repositories
-2. refatorar arquivos grandes sem introduzir complexidade desnecessaria
-3. ampliar testes nas areas de interface e migracao
-4. eventualmente adotar models tipados de fato no lugar de dicionarios
+2. continuar extraindo regras compartilhadas para helpers pequenos e reutilizaveis
+3. ampliar testes em UI e migracoes de banco
+4. reduzir gradualmente o uso de `dict` crus em fluxos mais sensiveis
 
 ---

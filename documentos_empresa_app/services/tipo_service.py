@@ -3,7 +3,11 @@ from __future__ import annotations
 import sqlite3
 
 from documentos_empresa_app.database.repositories import TipoRepository
-from documentos_empresa_app.utils.common import ValidationError
+from documentos_empresa_app.utils.common import (
+    TYPE_OCCURRENCE_MENSAL,
+    ValidationError,
+    normalize_type_occurrence_rule,
+)
 from documentos_empresa_app.utils.type_names import canonicalize_tipo_name
 
 
@@ -32,22 +36,24 @@ class TipoService:
         tipo_id = self.create_tipo(nome)
         return self.get_tipo(tipo_id), True
 
-    def create_tipo(self, nome_tipo: str) -> int:
+    def create_tipo(self, nome_tipo: str, regra_ocorrencia: str = TYPE_OCCURRENCE_MENSAL) -> int:
         nome = self._normalize_name(nome_tipo)
+        regra = self._normalize_occurrence_rule(regra_ocorrencia)
         if self.tipo_repository.get_by_name(nome):
             raise ValidationError("Ja existe um tipo com esse nome.")
         try:
-            return self.tipo_repository.create(nome)
+            return self.tipo_repository.create(nome, regra)
         except sqlite3.IntegrityError as exc:
             raise ValidationError("Nao foi possivel cadastrar o tipo.") from exc
 
-    def update_tipo(self, tipo_id: int, nome_tipo: str) -> None:
+    def update_tipo(self, tipo_id: int, nome_tipo: str, regra_ocorrencia: str = TYPE_OCCURRENCE_MENSAL) -> None:
         self.get_tipo(tipo_id)
         nome = self._normalize_name(nome_tipo)
+        regra = self._normalize_occurrence_rule(regra_ocorrencia)
         existing = self.tipo_repository.get_by_name(nome)
         if existing and existing["id"] != tipo_id:
             raise ValidationError("Ja existe um tipo com esse nome.")
-        self.tipo_repository.update(tipo_id, nome)
+        self.tipo_repository.update(tipo_id, nome, regra)
 
     def delete_tipo(self, tipo_id: int) -> None:
         self.get_tipo(tipo_id)
@@ -60,3 +66,6 @@ class TipoService:
         if not normalized:
             raise ValidationError("O nome do tipo nao pode ficar vazio.")
         return normalized
+
+    def _normalize_occurrence_rule(self, regra_ocorrencia: str | None) -> str:
+        return normalize_type_occurrence_rule(regra_ocorrencia)

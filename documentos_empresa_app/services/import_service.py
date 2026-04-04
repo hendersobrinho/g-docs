@@ -34,45 +34,52 @@ EMPRESA_IMPORT_LAYOUT = (
     },
     {
         "index": 3,
-        "field": "meios_recebimento",
-        "label": "Meios de recebimento",
-        "required": False,
-        "example": "Email, Onvio",
-    },
-    {
-        "index": 4,
         "field": "email_contato",
         "label": "Email de contato",
         "required": False,
         "example": "contato@empresa.com",
     },
     {
-        "index": 5,
+        "index": 4,
         "field": "nome_contato",
         "label": "Nome do contato",
         "required": False,
         "example": "Maria Silva",
+    },
+    {
+        "index": 5,
+        "field": "observacao",
+        "label": "Observacao",
+        "required": False,
+        "example": "Prefere retorno ate o dia 10",
     },
 )
 
 EMPRESA_IMPORT_HEADER_ALIASES = {
     0: {"codigo", "codigo_empresa", "codigo_da_empresa"},
     1: {"nome", "nome_empresa", "nome_da_empresa"},
-    2: {"meios", "meio", "meios_recebimento", "meios_de_recebimento", "meio_de_recebimento"},
-    3: {"email", "email_contato", "email_para_contato"},
-    4: {"contato", "nome_contato", "nome_do_contato"},
+    2: {"email", "email_contato", "email_para_contato"},
+    3: {"contato", "nome_contato", "nome_do_contato"},
+    4: {"observacao", "obs", "anotacao", "anotacoes"},
 }
 
 DOCUMENTO_IMPORT_LAYOUT = (
     {
         "index": 1,
+        "field": "meios_recebimento",
+        "label": "Meios de recebimento",
+        "required": False,
+        "example": "Email, Onvio",
+    },
+    {
+        "index": 2,
         "field": "nome_documento",
         "label": "Nome do documento",
         "required": True,
         "example": "Banco do Brasil",
     },
     {
-        "index": 2,
+        "index": 3,
         "field": "nome_tipo",
         "label": "Tipo do documento",
         "required": True,
@@ -81,6 +88,12 @@ DOCUMENTO_IMPORT_LAYOUT = (
 )
 
 DOCUMENTO_IMPORT_HEADER_ALIASES = {
+    0: {"meios", "meio", "meios_recebimento", "meios_de_recebimento", "meio_de_recebimento"},
+    1: {"nome_documento", "documento", "nome", "nome_do_documento"},
+    2: {"tipo", "nome_tipo", "tipo_documento", "tipo_do_documento"},
+}
+
+LEGACY_DOCUMENTO_IMPORT_HEADER_ALIASES = {
     0: {"nome_documento", "documento", "nome", "nome_do_documento"},
     1: {"tipo", "nome_tipo", "tipo_documento", "tipo_do_documento"},
 }
@@ -102,24 +115,24 @@ CADASTRO_COMPLETO_IMPORT_LAYOUT = (
     },
     {
         "index": 3,
-        "field": "meios_recebimento",
-        "label": "Meios de recebimento",
-        "required": False,
-        "example": "Email, Onvio",
-    },
-    {
-        "index": 4,
         "field": "email_contato",
         "label": "Email de contato",
         "required": False,
         "example": "contato@empresa.com",
     },
     {
-        "index": 5,
+        "index": 4,
         "field": "nome_contato",
         "label": "Nome do contato",
         "required": False,
         "example": "Maria Silva",
+    },
+    {
+        "index": 5,
+        "field": "meios_recebimento",
+        "label": "Meios de recebimento do documento",
+        "required": False,
+        "example": "Email, Onvio",
     },
     {
         "index": 6,
@@ -135,6 +148,13 @@ CADASTRO_COMPLETO_IMPORT_LAYOUT = (
         "required": False,
         "example": "Extratos CC",
     },
+    {
+        "index": 8,
+        "field": "observacao",
+        "label": "Observacao",
+        "required": False,
+        "example": "Prefere retorno ate o dia 10",
+    },
 )
 
 CADASTRO_COMPLETO_IMPORT_HEADER_ALIASES = {
@@ -142,9 +162,10 @@ CADASTRO_COMPLETO_IMPORT_HEADER_ALIASES = {
     1: EMPRESA_IMPORT_HEADER_ALIASES[1],
     2: EMPRESA_IMPORT_HEADER_ALIASES[2],
     3: EMPRESA_IMPORT_HEADER_ALIASES[3],
-    4: EMPRESA_IMPORT_HEADER_ALIASES[4],
-    5: DOCUMENTO_IMPORT_HEADER_ALIASES[0],
-    6: DOCUMENTO_IMPORT_HEADER_ALIASES[1],
+    4: DOCUMENTO_IMPORT_HEADER_ALIASES[0],
+    5: DOCUMENTO_IMPORT_HEADER_ALIASES[1],
+    6: DOCUMENTO_IMPORT_HEADER_ALIASES[2],
+    7: EMPRESA_IMPORT_HEADER_ALIASES[4],
 }
 
 IMPORT_COMPANY_CREATED = "created"
@@ -226,9 +247,15 @@ class ImportService:
 
         for row_number, row in self._iter_data_rows(worksheet, self._looks_like_documento_header):
             try:
-                nome_documento = self._get_row_value(row, 0)
-                nome_tipo = self._get_row_value(row, 1)
-                self._import_documento_row(empresa_id, nome_documento, nome_tipo)
+                if self._is_legacy_document_row(row):
+                    meios_recebimento = None
+                    nome_documento = self._get_row_value(row, 0)
+                    nome_tipo = self._get_row_value(row, 1)
+                else:
+                    meios_recebimento = self._get_row_value(row, 0)
+                    nome_documento = self._get_row_value(row, 1)
+                    nome_tipo = self._get_row_value(row, 2)
+                self._import_documento_row(empresa_id, meios_recebimento, nome_documento, nome_tipo)
                 imported += 1
             except ValidationError as exc:
                 failed += 1
@@ -255,12 +282,14 @@ class ImportService:
                 with db_manager.connect():
                     company, outcome = self._resolve_company_for_complete_row(row, current_company)
 
+                    meios_recebimento = self._get_row_value(row, 4)
                     nome_documento = self._get_row_value(row, 5)
                     nome_tipo = self._get_row_value(row, 6)
 
                     if self._row_has_values((nome_documento, nome_tipo)):
                         _, tipo_created, tipo_id = self._import_documento_row(
                             company["id"],
+                            meios_recebimento,
                             nome_documento,
                             nome_tipo,
                         )
@@ -346,7 +375,11 @@ class ImportService:
         return self._looks_like_header(row, EMPRESA_IMPORT_HEADER_ALIASES, minimum_matches=2)
 
     def _looks_like_documento_header(self, row) -> bool:
-        return self._looks_like_header(row, DOCUMENTO_IMPORT_HEADER_ALIASES, minimum_matches=2)
+        return self._looks_like_header(row, DOCUMENTO_IMPORT_HEADER_ALIASES, minimum_matches=2) or self._looks_like_header(
+            row,
+            LEGACY_DOCUMENTO_IMPORT_HEADER_ALIASES,
+            minimum_matches=2,
+        )
 
     def _looks_like_cadastro_completo_header(self, row) -> bool:
         return self._looks_like_header(row, CADASTRO_COMPLETO_IMPORT_HEADER_ALIASES, minimum_matches=3)
@@ -374,31 +407,36 @@ class ImportService:
     def _import_empresa_row(self, row) -> int:
         codigo = self._get_row_value(row, 0)
         nome = self._get_row_value(row, 1)
-        meios = self._get_row_value(row, 2)
-        email = self._get_row_value(row, 3)
-        contato = self._get_row_value(row, 4)
-        return self.empresa_service.create_empresa(codigo, nome or "", meios, email, contato)
+        email = self._get_row_value(row, 2)
+        contato = self._get_row_value(row, 3)
+        observacao = self._get_row_value(row, 4)
+        return self.empresa_service.create_empresa(codigo, nome or "", email, contato, observacao)
 
-    def _import_documento_row(self, empresa_id: int, nome_documento, nome_tipo) -> tuple[int, bool, int]:
+    def _import_documento_row(self, empresa_id: int, meios_recebimento, nome_documento, nome_tipo) -> tuple[int, bool, int]:
         if not self._has_value(nome_documento):
             raise ValidationError("O nome do documento deve ser informado.")
         if not self._has_value(nome_tipo):
             raise ValidationError("O tipo do documento deve ser informado.")
 
         tipo, tipo_created = self.tipo_service.ensure_tipo(str(nome_tipo))
-        documento_id = self.documento_service.create_documento(empresa_id, tipo["id"], str(nome_documento or ""))
+        documento_id = self.documento_service.create_documento(
+            empresa_id,
+            tipo["id"],
+            str(nome_documento or ""),
+            meios_recebimento,
+        )
         return documento_id, tipo_created, tipo["id"]
 
     def _resolve_company_for_complete_row(self, row, current_company: dict | None) -> tuple[dict, str]:
         codigo = self._get_row_value(row, 0)
         nome = self._get_row_value(row, 1)
-        meios = self._get_row_value(row, 2)
-        email = self._get_row_value(row, 3)
-        contato = self._get_row_value(row, 4)
-        company_values = (codigo, nome, meios, email, contato)
+        email = self._get_row_value(row, 2)
+        contato = self._get_row_value(row, 3)
+        observacao = self._get_row_value(row, 7)
+        company_values = (codigo, nome, email, contato, observacao)
 
         if self._has_value(codigo):
-            return self._get_or_create_company_for_import(codigo, nome, meios, email, contato)
+            return self._get_or_create_company_for_import(codigo, nome, email, contato, observacao)
 
         if self._row_has_values(company_values):
             raise ValidationError("Informe o codigo da empresa para identificar o cadastro completo.")
@@ -414,29 +452,35 @@ class ImportService:
         self,
         codigo,
         nome,
-        meios,
         email,
         contato,
+        observacao,
     ) -> tuple[dict, str]:
         existing = self.empresa_service.get_empresa_by_code(codigo, active_only=False)
         if not existing:
             if not self._has_value(nome):
                 raise ValidationError("O nome da empresa deve ser informado para novos cadastros.")
-            company_id = self.empresa_service.create_empresa(codigo, str(nome or ""), meios, email, contato)
+            company_id = self.empresa_service.create_empresa(codigo, str(nome or ""), email, contato, observacao)
             return self.empresa_service.get_empresa(company_id), IMPORT_COMPANY_CREATED
 
         updated_name = self._coalesce_row_value(nome, existing["nome_empresa"])
-        updated_meios = self._coalesce_row_value(meios, existing.get("meios_recebimento"))
         updated_email = self._coalesce_row_value(email, existing.get("email_contato"))
         updated_contato = self._coalesce_row_value(contato, existing.get("nome_contato"))
+        updated_observacao = self._coalesce_row_value(observacao, existing.get("observacao"))
 
-        if self._company_needs_update(existing, updated_name, updated_meios, updated_email, updated_contato):
+        if self._company_needs_update(
+            existing,
+            updated_name,
+            updated_email,
+            updated_contato,
+            updated_observacao,
+        ):
             self.empresa_service.update_empresa(
                 existing["id"],
                 updated_name,
-                updated_meios,
                 updated_email,
                 updated_contato,
+                updated_observacao,
             )
             return self.empresa_service.get_empresa(existing["id"]), IMPORT_COMPANY_UPDATED
 
@@ -446,16 +490,16 @@ class ImportService:
         self,
         company: dict,
         nome_empresa: str,
-        meios_recebimento: str | None,
         email_contato: str | None,
         nome_contato: str | None,
+        observacao: str | None,
     ) -> bool:
         return any(
             (
                 company["nome_empresa"] != nome_empresa,
-                (company.get("meios_recebimento") or None) != (meios_recebimento or None),
                 (company.get("email_contato") or None) != (email_contato or None),
                 (company.get("nome_contato") or None) != (nome_contato or None),
+                (company.get("observacao") or None) != (observacao or None),
             )
         )
 
@@ -480,6 +524,10 @@ class ImportService:
 
     def _has_value(self, value) -> bool:
         return value is not None and str(value).strip() != ""
+
+    def _is_legacy_document_row(self, row) -> bool:
+        meaningful_values = [value for value in row if self._has_value(value)]
+        return len(meaningful_values) <= 2
 
     def _coalesce_row_value(self, value, fallback):
         if not self._has_value(value):

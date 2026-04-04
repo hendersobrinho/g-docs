@@ -32,7 +32,7 @@ class DeliveryMethodsManagerDialog(tk.Toplevel):
         ttk.Label(
             self,
             text=(
-                "Gerencie os meios disponiveis no sistema. Renomear atualiza tambem as empresas que usam o meio. "
+                "Gerencie os meios disponiveis no sistema. Renomear atualiza tambem os documentos que usam o meio. "
                 "Excluir remove apenas da lista do sistema."
             ),
             justify="left",
@@ -112,10 +112,10 @@ class DeliveryMethodsManagerDialog(tk.Toplevel):
     def save_method(self, _event=None) -> None:
         try:
             if self.selected_method_id:
-                affected_companies = self.delivery_method_service.update_method(self.selected_method_id, self.nome_var.get())
+                affected_documents = self.delivery_method_service.update_method(self.selected_method_id, self.nome_var.get())
                 message = "Meio atualizado com sucesso."
-                if affected_companies:
-                    message += f" Empresas ajustadas: {affected_companies}."
+                if affected_documents:
+                    message += f" Documentos ajustados: {affected_documents}."
                 messagebox.showinfo(self.dialog_title, message, parent=self)
             else:
                 self.delivery_method_service.create_method(self.nome_var.get())
@@ -132,11 +132,11 @@ class DeliveryMethodsManagerDialog(tk.Toplevel):
             return
 
         method = self.delivery_method_service.get_method(self.selected_method_id)
-        affected_companies = self.delivery_method_service.count_companies_using(method["nome_meio"])
+        affected_documents = self.delivery_method_service.count_documents_using(method["nome_meio"])
         prompt = f'Deseja excluir "{method["nome_meio"]}" da lista do sistema?'
-        if affected_companies:
+        if affected_documents:
             prompt += (
-                f"\n\nEsse meio ainda aparece em {affected_companies} empresa(s). "
+                f"\n\nEsse meio ainda aparece em {affected_documents} documento(s). "
                 "A exclusao remove apenas da lista do sistema."
             )
 
@@ -238,7 +238,7 @@ class DeliveryMethodsField(ttk.LabelFrame):
         if not selected:
             messagebox.showwarning(
                 self.dialog_title,
-                "Selecione ou digite o meio que deseja remover da empresa.",
+                "Selecione ou digite o meio que deseja remover do cadastro atual.",
                 parent=self,
             )
             return
@@ -252,7 +252,7 @@ class DeliveryMethodsField(ttk.LabelFrame):
 
         messagebox.showwarning(
             self.dialog_title,
-            "Esse meio nao esta marcado para a empresa atual.",
+            "Esse meio nao esta marcado no cadastro atual.",
             parent=self,
         )
 

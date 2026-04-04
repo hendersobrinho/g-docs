@@ -3,7 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from documentos_empresa_app.ui.delivery_methods_field import DeliveryMethodsField
+from documentos_empresa_app.utils.common import MAX_COMPANY_OBSERVATION_LENGTH
 from documentos_empresa_app.utils.helpers import CompanySelector, ValidationError
 
 
@@ -29,10 +29,12 @@ class CadastroCompletoImportLayoutDialog(tk.Toplevel):
         ttk.Label(
             self,
             text=(
-                "Use uma linha por documento. As cinco primeiras colunas identificam a empresa, "
-                "e as duas ultimas cadastram o documento e o tipo. Para importar so a empresa, "
-                "deixe as colunas de documento em branco. Para continuar a mesma empresa em linhas "
-                "seguidas, voce pode deixar as cinco primeiras colunas em branco depois da primeira linha."
+                "Use uma linha por documento. As quatro primeiras colunas identificam a empresa, "
+                "a quinta informa o meio de recebimento do documento, as duas seguintes cadastram "
+                "o documento e o tipo, e a ultima registra a observacao da empresa. Para importar "
+                "so a empresa, deixe as colunas de documento em branco. Para continuar a mesma "
+                "empresa em linhas seguidas, voce pode deixar as quatro primeiras colunas em branco "
+                "depois da primeira linha."
             ),
             justify="left",
             wraplength=760,
@@ -109,13 +111,13 @@ class EmpresaTab(ttk.Frame):
         self.nome_var = tk.StringVar()
         self.email_var = tk.StringVar()
         self.contato_var = tk.StringVar()
-
         self.info_codigo_var = tk.StringVar(value="-")
         self.info_nome_var = tk.StringVar(value="Nenhuma empresa consultada.")
         self.info_email_var = tk.StringVar(value="-")
         self.info_contato_var = tk.StringVar(value="-")
-        self.info_meios_var = tk.StringVar(value="-")
+        self.info_observacao_var = tk.StringVar(value="-")
         self.info_situacao_var = tk.StringVar(value="Nenhuma empresa consultada.")
+        self.observacao_counter_var = tk.StringVar(value=f"0/{MAX_COMPANY_OBSERVATION_LENGTH}")
         self.summary_value_labels: list[ttk.Label] = []
         self.summary_status_label: ttk.Label | None = None
 
@@ -150,13 +152,20 @@ class EmpresaTab(ttk.Frame):
         ttk.Label(contact_row, text="Nome de contato (opcional)").grid(row=0, column=1, sticky="w")
         ttk.Entry(contact_row, textvariable=self.contato_var).grid(row=1, column=1, sticky="ew")
 
-        self.delivery_field = DeliveryMethodsField(
-            form,
-            title="Meios de recebimento da documentacao",
-            dialog_title="Empresas",
-            delivery_method_service=self.services.delivery_method_service,
+        observacao_row = ttk.Frame(form)
+        observacao_row.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        observacao_row.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            observacao_row,
+            text=f"Observacao livre (opcional, max {MAX_COMPANY_OBSERVATION_LENGTH} caracteres)",
+        ).grid(row=0, column=0, sticky="w")
+        self.observacao_text = tk.Text(observacao_row, height=4, wrap="word")
+        self.observacao_text.grid(row=1, column=0, sticky="ew")
+        self.observacao_text.bind("<<Modified>>", self._handle_observacao_modified)
+        ttk.Label(observacao_row, textvariable=self.observacao_counter_var).grid(
+            row=2, column=0, sticky="e", pady=(4, 0)
         )
-        self.delivery_field.grid(row=2, column=0, sticky="ew", pady=(0, 10))
 
         action_row = ttk.Frame(form)
         action_row.grid(row=3, column=0, sticky="ew")
@@ -217,7 +226,7 @@ class EmpresaTab(ttk.Frame):
         self._build_summary_row(summary, 2, "Nome", self.info_nome_var)
         self._build_summary_row(summary, 3, "Email", self.info_email_var)
         self._build_summary_row(summary, 4, "Contato", self.info_contato_var)
-        self._build_summary_row(summary, 5, "Meios", self.info_meios_var)
+        self._build_summary_row(summary, 5, "Observacao", self.info_observacao_var)
 
         summary_actions = ttk.Frame(summary)
         summary_actions.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(10, 0))
@@ -286,7 +295,7 @@ class EmpresaTab(ttk.Frame):
         self.nome_var.set(company["nome_empresa"])
         self.email_var.set(company.get("email_contato") or "")
         self.contato_var.set(company.get("nome_contato") or "")
-        self.delivery_field.set_values(company.get("meios_recebimento"))
+        self._set_observacao_text(company.get("observacao"))
         self.codigo_entry.configure(state="disabled")
         self.save_button.configure(text="Salvar alteracoes")
         self._update_company_summary(company)
@@ -301,7 +310,7 @@ class EmpresaTab(ttk.Frame):
         self.nome_var.set("")
         self.email_var.set("")
         self.contato_var.set("")
-        self.delivery_field.clear()
+        self._set_observacao_text("")
         self.codigo_entry.configure(state="normal")
         self.save_button.configure(text="Cadastrar empresa")
         self._update_company_summary(None)
@@ -323,7 +332,7 @@ class EmpresaTab(ttk.Frame):
             self.info_nome_var.set("Nenhuma empresa consultada.")
             self.info_email_var.set("-")
             self.info_contato_var.set("-")
-            self.info_meios_var.set("-")
+            self.info_observacao_var.set("-")
             self.info_situacao_var.set("Nenhuma empresa consultada.")
             return
 
@@ -331,7 +340,7 @@ class EmpresaTab(ttk.Frame):
         self.info_nome_var.set(company["nome_empresa"])
         self.info_email_var.set(company.get("email_contato") or "-")
         self.info_contato_var.set(company.get("nome_contato") or "-")
-        self.info_meios_var.set(company.get("meios_recebimento") or "-")
+        self.info_observacao_var.set(company.get("observacao") or "-")
         self.info_situacao_var.set("Empresa ativa." if company["ativa"] else "Empresa inativa.")
 
     def _set_selection_actions(self, *, enabled: bool) -> None:
@@ -340,6 +349,31 @@ class EmpresaTab(ttk.Frame):
         self.reactivate_button.configure(state=state)
         self.delete_button.configure(state=state)
 
+    def _get_observacao_text(self) -> str:
+        return self.observacao_text.get("1.0", "end-1c")
+
+    def _set_observacao_text(self, value: str | None) -> None:
+        self.observacao_text.delete("1.0", "end")
+        normalized_value = str(value or "")[:MAX_COMPANY_OBSERVATION_LENGTH]
+        if normalized_value:
+            self.observacao_text.insert("1.0", normalized_value)
+        self._update_observacao_counter()
+        self.observacao_text.edit_modified(False)
+
+    def _update_observacao_counter(self) -> None:
+        self.observacao_counter_var.set(
+            f"{len(self._get_observacao_text())}/{MAX_COMPANY_OBSERVATION_LENGTH}"
+        )
+
+    def _handle_observacao_modified(self, _event=None) -> None:
+        current_text = self._get_observacao_text()
+        if len(current_text) > MAX_COMPANY_OBSERVATION_LENGTH:
+            self.observacao_text.delete("1.0", "end")
+            self.observacao_text.insert("1.0", current_text[:MAX_COMPANY_OBSERVATION_LENGTH])
+            self.bell()
+        self._update_observacao_counter()
+        self.observacao_text.edit_modified(False)
+
     def save_company(self) -> None:
         target_company_id = self.selected_company_id
         try:
@@ -347,18 +381,18 @@ class EmpresaTab(ttk.Frame):
                 self.services.empresa_service.update_empresa(
                     self.selected_company_id,
                     self.nome_var.get(),
-                    self.delivery_field.get_values(),
                     self.email_var.get(),
                     self.contato_var.get(),
+                    self._get_observacao_text(),
                 )
                 messagebox.showinfo("Empresas", "Empresa atualizada com sucesso.", parent=self)
             else:
                 target_company_id = self.services.empresa_service.create_empresa(
                     self.codigo_var.get(),
                     self.nome_var.get(),
-                    self.delivery_field.get_values(),
                     self.email_var.get(),
                     self.contato_var.get(),
+                    self._get_observacao_text(),
                 )
                 messagebox.showinfo("Empresas", "Empresa cadastrada com sucesso.", parent=self)
         except ValidationError as exc:

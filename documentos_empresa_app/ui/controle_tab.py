@@ -87,6 +87,7 @@ class ControleTab(ttk.Frame):
         self._legend_chip(legend, "Recebido").pack(side="left", padx=(8, 4))
         self._legend_chip(legend, "Pendente").pack(side="left", padx=4)
         self._legend_chip(legend, "Encerrado").pack(side="left", padx=4)
+        self._legend_chip(legend, "Nao cobrar").pack(side="left", padx=4)
 
         ttk.Label(self, textvariable=self.message_var).pack(fill="x", pady=(0, 8))
 
@@ -379,6 +380,17 @@ class ControleTab(ttk.Frame):
                 bg="#DCE6F1",
                 font=("TkDefaultFont", 10, "bold"),
             ).pack(side="left", padx=(0, 10))
+            if group.get("tipo_ocorrencia") not in (None, "mensal"):
+                tk.Label(
+                    header_frame,
+                    text=group["tipo_ocorrencia_label"],
+                    bg="#EAF1D0",
+                    fg="#355E1D",
+                    relief="solid",
+                    bd=1,
+                    padx=8,
+                    pady=2,
+                ).pack(side="left", padx=(0, 10))
             tk.Label(
                 header_frame,
                 text=f'{len(group["documentos"])} documento(s)',
@@ -417,16 +429,25 @@ class ControleTab(ttk.Frame):
                             cell.get("updated_at"),
                         )
                     else:
+                        display_status = cell.get("status") or ""
+                        color = STATUS_COLORS.get(display_status, "#F3F3F3")
                         inactive = tk.Label(
                             self.scrollable.inner,
-                            text="",
+                            text=display_status,
                             relief="solid",
                             bd=1,
-                            bg="#F3F3F3",
+                            bg=color,
                             padx=8,
                             pady=10,
                         )
                         inactive.grid(row=row_index, column=column_index, sticky="nsew", padx=1, pady=1)
+                        read_only_hint = cell.get("read_only_hint")
+                        if read_only_hint:
+                            inactive.bind(
+                                "<Enter>",
+                                lambda _event, message=read_only_hint: self.message_var.set(message),
+                            )
+                            inactive.bind("<Leave>", self._restore_default_message)
                 row_index += 1
 
         for column_index in range(len(periodos) + 1):

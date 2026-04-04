@@ -33,12 +33,33 @@ DOCUMENT_DELIVERY_OPTION_BY_KEY = {
     "email": "Email",
     "onvio": "Onvio",
 }
+MAX_COMPANY_OBSERVATION_LENGTH = 255
+TYPE_OCCURRENCE_MENSAL = "mensal"
+TYPE_OCCURRENCE_TRIMESTRAL = "trimestral"
+TYPE_OCCURRENCE_ANUAL_JANEIRO = "anual_janeiro"
+TYPE_OCCURRENCE_LABELS = {
+    TYPE_OCCURRENCE_MENSAL: "Mensal",
+    TYPE_OCCURRENCE_TRIMESTRAL: "Trimestral",
+    TYPE_OCCURRENCE_ANUAL_JANEIRO: "Anual em janeiro",
+}
+TYPE_OCCURRENCE_CHOICES = (
+    (TYPE_OCCURRENCE_MENSAL, TYPE_OCCURRENCE_LABELS[TYPE_OCCURRENCE_MENSAL]),
+    (TYPE_OCCURRENCE_TRIMESTRAL, TYPE_OCCURRENCE_LABELS[TYPE_OCCURRENCE_TRIMESTRAL]),
+    (TYPE_OCCURRENCE_ANUAL_JANEIRO, TYPE_OCCURRENCE_LABELS[TYPE_OCCURRENCE_ANUAL_JANEIRO]),
+)
+TYPE_OCCURRENCE_ALLOWED_MONTHS = {
+    TYPE_OCCURRENCE_MENSAL: frozenset(range(1, 13)),
+    TYPE_OCCURRENCE_TRIMESTRAL: frozenset({1, 4, 7, 10}),
+    TYPE_OCCURRENCE_ANUAL_JANEIRO: frozenset({1}),
+}
+AUTO_STATUS_NAO_COBRAR = "Nao cobrar"
 STATUS_OPTIONS = ("", "Recebido", "Pendente", "Encerrado")
 STATUS_COLORS = {
     "": "#FFFFFF",
     "Recebido": "#D9F2D9",
     "Pendente": "#FAD4D4",
     "Encerrado": "#E2E2E2",
+    AUTO_STATUS_NAO_COBRAR: "#F6EFC7",
 }
 MONTH_NAMES = {
     1: "Janeiro",
@@ -98,6 +119,52 @@ def normalize_delivery_methods(
 ) -> str | None:
     normalized_items = parse_delivery_methods(raw_methods, known_options=known_options)
     return ", ".join(normalized_items) if normalized_items else None
+
+
+def normalize_type_occurrence_rule(raw_rule: str | None) -> str:
+    normalized = str(raw_rule or "").strip().casefold().replace("-", "_").replace(" ", "_")
+    alias_map = {
+        "": TYPE_OCCURRENCE_MENSAL,
+        "mensal": TYPE_OCCURRENCE_MENSAL,
+        "padrao": TYPE_OCCURRENCE_MENSAL,
+        "normal": TYPE_OCCURRENCE_MENSAL,
+        "trimestral": TYPE_OCCURRENCE_TRIMESTRAL,
+        "anual": TYPE_OCCURRENCE_ANUAL_JANEIRO,
+        "anual_janeiro": TYPE_OCCURRENCE_ANUAL_JANEIRO,
+        "janeiro": TYPE_OCCURRENCE_ANUAL_JANEIRO,
+    }
+    if normalized not in alias_map:
+        raise ValidationError("Regra de ocorrencia invalida para o tipo de documento.")
+    return alias_map[normalized]
+
+
+def get_type_occurrence_label(raw_rule: str | None) -> str:
+    rule = normalize_type_occurrence_rule(raw_rule)
+    return TYPE_OCCURRENCE_LABELS[rule]
+
+
+def is_chargeable_period(raw_rule: str | None, month: int) -> bool:
+    rule = normalize_type_occurrence_rule(raw_rule)
+    return month in TYPE_OCCURRENCE_ALLOWED_MONTHS[rule]
+
+
+def build_chargeable_closure_key_map(
+    closure_rows: list[dict],
+    occurrence_by_document: dict[int, str | None],
+) -> dict[int, int]:
+    closure_keys: dict[int, int] = {}
+    for row in closure_rows:
+        occurrence_rule = normalize_type_occurrence_rule(
+            occurrence_by_document.get(row["documento_empresa_id"], TYPE_OCCURRENCE_MENSAL)
+        )
+        if not is_chargeable_period(occurrence_rule, row["mes"]):
+            continue
+
+        current_key = month_key(row["ano"], row["mes"])
+        previous_key = closure_keys.get(row["documento_empresa_id"])
+        if previous_key is None or current_key < previous_key:
+            closure_keys[row["documento_empresa_id"]] = current_key
+    return closure_keys
 
 
 def month_key(year: int, month: int) -> int:

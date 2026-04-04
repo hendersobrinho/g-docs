@@ -69,7 +69,7 @@ def build_application_services(db_path: str | Path, session_service: SessionServ
     empresa_service = EmpresaService(empresa_repository, audit_service=audit_service, session_service=session)
     delivery_method_service = DeliveryMethodService(
         delivery_method_repository,
-        empresa_repository,
+        documento_repository,
         audit_service=audit_service,
         session_service=session,
     )

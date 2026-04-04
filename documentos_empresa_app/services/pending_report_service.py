@@ -15,7 +15,15 @@ from documentos_empresa_app.database.repositories import (
     PeriodoRepository,
     StatusRepository,
 )
-from documentos_empresa_app.utils.common import ValidationError, count_months_between, format_period_label, month_key
+from documentos_empresa_app.utils.common import (
+    ValidationError,
+    build_chargeable_closure_key_map,
+    count_months_between,
+    format_period_label,
+    is_chargeable_period,
+    month_key,
+    normalize_type_occurrence_rule,
+)
 
 
 class PendingReportService:
@@ -54,15 +62,15 @@ class PendingReportService:
                 (row["documento_empresa_id"], row["periodo_id"]): row["status"] or ""
                 for row in self.status_repository.list_for_documents_and_periods(document_ids, period_ids)
             }
-            closures = {
-                row["documento_empresa_id"]: row["fechamento"]
-                for row in self.status_repository.list_earliest_closures(document_ids)
-            }
+            closures = self._get_closure_key_map(documentos)
 
             for documento in documentos:
                 closure_key = closures.get(documento["id"])
+                occurrence_rule = normalize_type_occurrence_rule(documento.get("regra_ocorrencia"))
                 for periodo in periodos:
                     current_key = month_key(periodo["ano"], periodo["mes"])
+                    if not is_chargeable_period(occurrence_rule, periodo["mes"]):
+                        continue
                     if closure_key is not None and current_key > closure_key:
                         continue
 
@@ -222,3 +230,12 @@ class PendingReportService:
 
         resolved_companies.sort(key=lambda item: (item["codigo_empresa"], item["nome_empresa"].casefold()))
         return resolved_companies
+
+    def _get_closure_key_map(self, documentos: list[dict]) -> dict[int, int]:
+        document_ids = [documento["id"] for documento in documentos]
+        occurrence_by_document = {
+            documento["id"]: normalize_type_occurrence_rule(documento.get("regra_ocorrencia"))
+            for documento in documentos
+        }
+        closure_rows = self.status_repository.list_closures_for_documents(document_ids)
+        return build_chargeable_closure_key_map(closure_rows, occurrence_by_document)

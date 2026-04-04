@@ -4,69 +4,117 @@
 
 # G-docs
 
-Sistema desktop local para controle de recebimento de documentos por empresa.
+Sistema desktop local para controle de recebimento de documentos empresariais.
 
-Versao atual: `1.1.0`
+Versao atual: `1.2.0`
 
-O G-docs foi pensado para organizar uma rotina operacional que normalmente fica espalhada entre planilhas, e-mails, mensagens e controles manuais. A proposta do projeto e oferecer uma aplicacao simples, clara e funcional para acompanhar documentos recorrentes, registrar pendencias, marcar recebimentos e manter historico operacional com mais seguranca.
+O G-docs foi desenhado para substituir planilhas e controles manuais por um fluxo local, rastreavel e simples de operar. O foco do projeto continua sendo clareza operacional: cadastrar empresas, organizar documentos, controlar recebimentos por periodo e manter historico auditavel sem depender de servidor.
 
 ## Objetivo
 
-Centralizar o controle mensal de documentos empresariais em um sistema leve, local e facil de manter, permitindo que a operacao saiba com clareza:
+Centralizar o acompanhamento de documentos por empresa, documento e periodo, permitindo saber com clareza:
 
-- quais documentos devem ser recebidos
-- de qual empresa cada documento pertence
-- em qual periodo ele esta pendente ou recebido
-- quando um documento foi encerrado e deixou de fazer parte da rotina
-- quem realizou alteracoes importantes dentro do sistema
-
-## Missao
-
-Reduzir o trabalho manual e a desorganizacao operacional, transformando um processo repetitivo e sensivel em um fluxo mais confiavel, rastreavel e simples de executar no dia a dia.
+- quais documentos precisam ser cobrados
+- por qual meio cada documento costuma ser recebido
+- quais itens estao pendentes, recebidos ou encerrados
+- quais tipos seguem regra mensal, trimestral ou anual em janeiro
+- quem realizou alteracoes relevantes no sistema
 
 ## Principais caracteristicas
 
-- aplicacao desktop local, sem dependencia de servidor
-- interface em abas, objetiva e voltada para uso operacional
-- banco SQLite separado do programa, facilitando atualizacoes sem perda de dados
-- controle mensal por empresa, documento e periodo
-- regra de encerramento para retirar documentos dos meses futuros
-- login de usuarios com senha protegida por hash e opcao de lembrar credencial
-- perfis `admin` e `comum`
-- logs das alteracoes mais importantes
-- importacao completa por Excel para empresas, tipos e documentos no mesmo arquivo
-- relatorio de pendencias em Excel por empresa e periodo
-- backup do banco pela interface e restauracao restrita a admin
-- vinculo opcional de pasta local para documentos por empresa
-- reaproveitamento de tipos e nomenclaturas de documentos ja usados no sistema
-- preparacao para empacotamento e instalacao
+- aplicacao desktop local em Python, Tkinter e SQLite
+- banco separado da pasta instalada do programa
+- autenticacao com perfis `admin` e `comum`
+- logs administrativos de alteracoes relevantes
+- observacao livre por empresa com ate 255 caracteres
+- meios de recebimento vinculados a cada documento
+- tipos com ocorrencia configuravel:
+  - `Mensal`
+  - `Trimestral`
+  - `Anual em janeiro`
+- status automatico `Nao cobrar` para meses fora da ocorrencia do tipo
+- regra de encerramento que bloqueia meses posteriores
+- importacao Excel com layouts atualizados e compatibilidade legada
+- relatorio de pendencias em Excel
+- backup e restauracao do banco pela interface
+- vinculo opcional de pasta local por empresa
 
-## O que o sistema entrega
+## Novidades da versao `1.2.0`
 
-- cadastro de empresas
-- manutencao de meios de recebimento por empresa
-- cadastro de tipos de documento no painel lateral da aba `Documentos`
-- cadastro de documentos vinculados a cada empresa com sugestoes reutilizaveis por tipo
-- geracao de periodos mensais por ano
-- consulta por intervalo de ate 12 meses
-- atualizacao de status como `Recebido`, `Pendente` e `Encerrado`
-- vinculo de pasta local para cada empresa
-- exportacao de relatorio de pendencias em Excel
-- backup do banco e restauracao por administradores
-- controle de usuarios
-- visualizacao de logs administrativos
-- estrutura pronta para build por Windows, macOS e Linux
+- observacao por empresa validada em servico, banco e interface
+- meios de recebimento migrados de empresa para documento
+- importacao completa atualizada para receber meio de recebimento por documento
+- tipos com ocorrencia especial para documentos trimestrais e anuais
+- grade de controle mostrando `Nao cobrar` automaticamente quando o tipo nao deve ser cobrado naquele mes
+- painel de tipos atualizado para configurar a ocorrencia sem poluir a interface
 
 ## Fluxo principal de uso
 
-1. O usuario faz login no sistema.
-2. Cadastra empresas manualmente ou usa a importacao completa para trazer empresas, tipos e documentos de uma vez.
-3. Complementa os documentos necessarios na aba `Documentos`, reutilizando tipos e nomenclaturas ja existentes quando fizer sentido.
-4. Gera os periodos anuais de controle.
-5. Consulta uma empresa por periodo na aba `Controle`.
-6. Atualiza os status mensais dos documentos.
-7. Exporta relatorios de pendencias ou faz backup quando necessario.
-8. O sistema registra logs das alteracoes relevantes.
+1. Fazer login.
+2. Cadastrar empresas manualmente ou importar por Excel.
+3. Cadastrar documentos por empresa, definindo tipo e meios de recebimento.
+4. Ajustar a ocorrencia do tipo quando necessario.
+5. Gerar os periodos anuais de controle.
+6. Consultar a empresa na aba `Controle`.
+7. Atualizar os status permitidos para cada mes.
+8. Exportar pendencias, consultar logs ou gerar backup quando necessario.
+
+## Regras importantes
+
+- empresa e unica por `codigo_empresa`
+- documento e unico por `(empresa, tipo, nome_documento)`
+- observacao de empresa aceita no maximo 255 caracteres
+- meios de recebimento pertencem ao documento, nao mais a empresa
+- tipo `Trimestral` libera apenas `01`, `04`, `07` e `10`
+- tipo `Anual em janeiro` libera apenas `01`
+- meses fora da ocorrencia aparecem como `Nao cobrar` e nao recebem edicao manual
+- `Encerrado` continua removendo a exibicao/editabilidade dos meses posteriores
+- consultas e relatorios aceitam no maximo 12 meses por vez
+
+## Layouts de importacao
+
+### Empresas
+
+- `codigo_empresa`
+- `nome_empresa`
+- `email_contato`
+- `nome_contato`
+- `observacao`
+
+Compatibilidade mantida com o layout legado de 2 colunas.
+
+### Documentos
+
+- `meios_recebimento`
+- `nome_documento`
+- `nome_tipo`
+
+Compatibilidade mantida com o layout legado de 2 colunas (`nome_documento`, `nome_tipo`).
+
+### Cadastro completo
+
+- `codigo_empresa`
+- `nome_empresa`
+- `email_contato`
+- `nome_contato`
+- `meios_recebimento`
+- `nome_documento`
+- `nome_tipo`
+- `observacao`
+
+## Execucao local
+
+Na raiz do projeto:
+
+```powershell
+.\.venv\Scripts\python.exe main.py
+```
+
+Para executar a suite principal de servicos:
+
+```powershell
+.\.venv\Scripts\python.exe -W default -m unittest tests.test_services
+```
 
 ## Tecnologias utilizadas
 
@@ -78,7 +126,7 @@ Reduzir o trabalho manual e a desorganizacao operacional, transformando um proce
 
 ## Estrutura da documentacao
 
-Este `README` funciona como apresentacao geral do projeto. A documentacao tecnica detalhada foi separada em arquivos `.md` dentro da pasta [`docs/`](docs), para facilitar estudo, manutencao e navegacao por assunto.
+Este `README` cobre a visao atual do produto. A documentacao tecnica detalhada continua na pasta [`docs/`](docs).
 
 ### Documentacao tecnica
 

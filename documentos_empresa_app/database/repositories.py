@@ -33,7 +33,7 @@ class EmpresaRepository(BaseRepository):
     def list_all(self, active_only: bool = False) -> list[dict]:
         query = """
             SELECT id, codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato,
-                   diretorio_documentos, ativa
+                   observacao, diretorio_documentos, ativa
             FROM empresas
         """
         params: tuple = ()
@@ -46,7 +46,7 @@ class EmpresaRepository(BaseRepository):
         return self._fetchone(
             """
             SELECT id, codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato,
-                   diretorio_documentos, ativa
+                   observacao, diretorio_documentos, ativa
             FROM empresas
             WHERE id = ?
             """,
@@ -56,7 +56,7 @@ class EmpresaRepository(BaseRepository):
     def get_by_code(self, codigo_empresa: int, active_only: bool = False) -> dict | None:
         query = """
             SELECT id, codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato,
-                   diretorio_documentos, ativa
+                   observacao, diretorio_documentos, ativa
             FROM empresas
             WHERE codigo_empresa = ?
         """
@@ -72,13 +72,14 @@ class EmpresaRepository(BaseRepository):
         meios_recebimento: str | None = None,
         email_contato: str | None = None,
         nome_contato: str | None = None,
+        observacao: str | None = None,
     ) -> int:
         return self._execute(
             """
-            INSERT INTO empresas (codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO empresas (codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato, observacao)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato),
+            (codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato, observacao),
         )
 
     def update_name(self, empresa_id: int, nome_empresa: str) -> None:
@@ -91,14 +92,15 @@ class EmpresaRepository(BaseRepository):
         meios_recebimento: str | None,
         email_contato: str | None,
         nome_contato: str | None,
+        observacao: str | None,
     ) -> None:
         self._execute(
             """
             UPDATE empresas
-            SET nome_empresa = ?, meios_recebimento = ?, email_contato = ?, nome_contato = ?
+            SET nome_empresa = ?, meios_recebimento = ?, email_contato = ?, nome_contato = ?, observacao = ?
             WHERE id = ?
             """,
-            (nome_empresa, meios_recebimento, email_contato, nome_contato, empresa_id),
+            (nome_empresa, meios_recebimento, email_contato, nome_contato, observacao, empresa_id),
         )
 
     def update_directory(self, empresa_id: int, diretorio_documentos: str | None) -> None:
@@ -150,26 +152,35 @@ class TipoRepository(BaseRepository):
     def list_all(self) -> list[dict]:
         return self._fetchall(
             """
-            SELECT id, nome_tipo
+            SELECT id, nome_tipo, regra_ocorrencia
             FROM tipos_documento
             ORDER BY nome_tipo
             """
         )
 
     def get_by_id(self, tipo_id: int) -> dict | None:
-        return self._fetchone("SELECT id, nome_tipo FROM tipos_documento WHERE id = ?", (tipo_id,))
+        return self._fetchone(
+            "SELECT id, nome_tipo, regra_ocorrencia FROM tipos_documento WHERE id = ?",
+            (tipo_id,),
+        )
 
     def get_by_name(self, nome_tipo: str) -> dict | None:
         return self._fetchone(
-            "SELECT id, nome_tipo FROM tipos_documento WHERE nome_tipo = ?",
+            "SELECT id, nome_tipo, regra_ocorrencia FROM tipos_documento WHERE nome_tipo = ?",
             (nome_tipo,),
         )
 
-    def create(self, nome_tipo: str) -> int:
-        return self._execute("INSERT INTO tipos_documento (nome_tipo) VALUES (?)", (nome_tipo,))
+    def create(self, nome_tipo: str, regra_ocorrencia: str) -> int:
+        return self._execute(
+            "INSERT INTO tipos_documento (nome_tipo, regra_ocorrencia) VALUES (?, ?)",
+            (nome_tipo, regra_ocorrencia),
+        )
 
-    def update(self, tipo_id: int, nome_tipo: str) -> None:
-        self._execute("UPDATE tipos_documento SET nome_tipo = ? WHERE id = ?", (nome_tipo, tipo_id))
+    def update(self, tipo_id: int, nome_tipo: str, regra_ocorrencia: str) -> None:
+        self._execute(
+            "UPDATE tipos_documento SET nome_tipo = ?, regra_ocorrencia = ? WHERE id = ?",
+            (nome_tipo, regra_ocorrencia, tipo_id),
+        )
 
     def delete(self, tipo_id: int) -> None:
         self._execute("DELETE FROM tipos_documento WHERE id = ?", (tipo_id,))
@@ -398,6 +409,15 @@ class LogRepository(BaseRepository):
 
 
 class DocumentoRepository(BaseRepository):
+    def list_all(self) -> list[dict]:
+        return self._fetchall(
+            """
+            SELECT id, empresa_id, tipo_documento_id, meios_recebimento, nome_documento
+            FROM documentos_empresa
+            ORDER BY empresa_id, nome_documento
+            """
+        )
+
     def list_by_company(self, empresa_id: int) -> list[dict]:
         return self._fetchall(
             """
@@ -405,8 +425,10 @@ class DocumentoRepository(BaseRepository):
                 d.id,
                 d.empresa_id,
                 d.tipo_documento_id,
+                d.meios_recebimento,
                 d.nome_documento,
-                t.nome_tipo
+                t.nome_tipo,
+                t.regra_ocorrencia
             FROM documentos_empresa d
             INNER JOIN tipos_documento t ON t.id = d.tipo_documento_id
             WHERE d.empresa_id = ?
@@ -418,9 +440,17 @@ class DocumentoRepository(BaseRepository):
     def get_by_id(self, documento_id: int) -> dict | None:
         return self._fetchone(
             """
-            SELECT id, empresa_id, tipo_documento_id, nome_documento
-            FROM documentos_empresa
-            WHERE id = ?
+            SELECT
+                d.id,
+                d.empresa_id,
+                d.tipo_documento_id,
+                d.meios_recebimento,
+                d.nome_documento,
+                t.nome_tipo,
+                t.regra_ocorrencia
+            FROM documentos_empresa d
+            INNER JOIN tipos_documento t ON t.id = d.tipo_documento_id
+            WHERE d.id = ?
             """,
             (documento_id,),
         )
@@ -469,23 +499,41 @@ class DocumentoRepository(BaseRepository):
             params.append(ignore_id)
         return self._fetchone(query, tuple(params))
 
-    def create(self, empresa_id: int, tipo_documento_id: int, nome_documento: str) -> int:
+    def create(
+        self,
+        empresa_id: int,
+        tipo_documento_id: int,
+        meios_recebimento: str | None,
+        nome_documento: str,
+    ) -> int:
         return self._execute(
             """
-            INSERT INTO documentos_empresa (empresa_id, tipo_documento_id, nome_documento)
-            VALUES (?, ?, ?)
+            INSERT INTO documentos_empresa (empresa_id, tipo_documento_id, meios_recebimento, nome_documento)
+            VALUES (?, ?, ?, ?)
             """,
-            (empresa_id, tipo_documento_id, nome_documento),
+            (empresa_id, tipo_documento_id, meios_recebimento, nome_documento),
         )
 
-    def update(self, documento_id: int, tipo_documento_id: int, nome_documento: str) -> None:
+    def update(
+        self,
+        documento_id: int,
+        tipo_documento_id: int,
+        meios_recebimento: str | None,
+        nome_documento: str,
+    ) -> None:
         self._execute(
             """
             UPDATE documentos_empresa
-            SET tipo_documento_id = ?, nome_documento = ?
+            SET tipo_documento_id = ?, meios_recebimento = ?, nome_documento = ?
             WHERE id = ?
             """,
-            (tipo_documento_id, nome_documento, documento_id),
+            (tipo_documento_id, meios_recebimento, nome_documento, documento_id),
+        )
+
+    def update_delivery_methods(self, documento_id: int, meios_recebimento: str | None) -> None:
+        self._execute(
+            "UPDATE documentos_empresa SET meios_recebimento = ? WHERE id = ?",
+            (meios_recebimento, documento_id),
         )
 
     def delete(self, documento_id: int) -> None:
@@ -666,6 +714,25 @@ class StatusRepository(BaseRepository):
             WHERE s.documento_empresa_id IN ({placeholders})
               AND s.status = 'Encerrado'
             GROUP BY s.documento_empresa_id
+            """,
+            tuple(documento_ids),
+        )
+
+    def list_closures_for_documents(self, documento_ids: list[int]) -> list[dict]:
+        if not documento_ids:
+            return []
+        placeholders = ", ".join("?" for _ in documento_ids)
+        return self._fetchall(
+            f"""
+            SELECT
+                s.documento_empresa_id,
+                p.ano,
+                p.mes
+            FROM status_documento_mensal s
+            INNER JOIN periodos p ON p.id = s.periodo_id
+            WHERE s.documento_empresa_id IN ({placeholders})
+              AND s.status = 'Encerrado'
+            ORDER BY p.ano, p.mes
             """,
             tuple(documento_ids),
         )

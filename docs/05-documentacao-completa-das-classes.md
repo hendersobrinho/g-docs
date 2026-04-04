@@ -50,7 +50,7 @@
   - `update_details()`
   - `update_active()`
   - `delete()`
-- Dados manipulados: codigo, nome, meios de recebimento, email, nome de contato, ativo
+- Dados manipulados: codigo, nome, email, nome de contato, observacao, diretorio e compatibilidade legada de meios
 
 ### `TipoRepository`
 
@@ -64,7 +64,7 @@
   - `update()`
   - `delete()`
   - `is_in_use()`
-- Papel adicional: impedir exclusao de tipo em uso
+- Papel adicional: impedir exclusao de tipo em uso e armazenar a regra de ocorrencia
 
 ### `UsuarioRepository`
 
@@ -132,8 +132,9 @@
   - `list_future_statuses()`
   - `get_earliest_closure()`
   - `list_earliest_closures()`
+  - `list_closures_for_documents()`
   - `delete_future_statuses()`
-- Papel adicional: viabilizar a regra de encerramento e a montagem da grade mensal
+- Papel adicional: viabilizar a regra de encerramento e a montagem da grade mensal com ocorrencia especial
 
 ## 5.3 Servicos de negocio
 
@@ -158,20 +159,20 @@
 
 - Objetivo: encapsular toda a regra de empresas
 - Dependencias: `EmpresaRepository`, `AuditService`, `SessionService`
-- Dados manipulados: codigo, nome, ativo, meios de recebimento, email e contato
+- Dados manipulados: codigo, nome, ativo, email, contato, observacao e diretorio
 - Papel: validar, normalizar, persistir e auditar operacoes em empresas
 
 ### `TipoService`
 
 - Objetivo: gerenciar tipos de documento
 - Dependencias: `TipoRepository`
-- Papel: validar nome, canonicalizar variacoes textuais e bloquear exclusao em uso
+- Papel: validar nome, canonicalizar variacoes textuais, persistir ocorrencia e bloquear exclusao em uso
 
 ### `DocumentoService`
 
 - Objetivo: gerenciar documentos por empresa
 - Dependencias: `DocumentoRepository`, `EmpresaRepository`, `TipoRepository`, `AuditService`, `SessionService`
-- Papel: garantir existencia de empresa/tipo, impedir duplicidades, atualizar tipo/nome e registrar logs
+- Papel: garantir existencia de empresa/tipo, impedir duplicidades, tratar meios de recebimento por documento e registrar logs
 
 ### `PeriodoService`
 
@@ -185,6 +186,8 @@
 - Dependencias: `EmpresaRepository`, `DocumentoRepository`, `PeriodoRepository`, `StatusRepository`, `AuditService`, `SessionService`
 - Papel central:
   - validar status
+  - aplicar regra de ocorrencia do tipo
+  - marcar meses fora da ocorrencia como `Nao cobrar` na visao
   - aplicar regra de encerramento
   - remover status futuros quando um documento e encerrado
   - registrar logs de mudanca
@@ -252,19 +255,20 @@
 ### `EmpresaTab`
 
 - Objetivo: cadastro de empresas
-- Dependencias: `EmpresaService`, `ImportService`, `DeliveryMethodService`, `DeliveryMethodsField`
+- Dependencias: `EmpresaService`, `ImportService`
 - Papel:
   - criar/editar empresa
   - inativar/reativar/excluir
   - importar empresas por Excel
-  - manter meios de recebimento
+  - manter observacao e dados de contato
 
 ### `DocumentoTab`
 
 - Objetivo: cadastrar documentos por empresa
-- Dependencias: `DocumentoService`, `TipoService`, `ImportService`, `CompanySelector`
+- Dependencias: `DocumentoService`, `TipoService`, `ImportService`, `CompanySelector`, `DeliveryMethodsField`
 - Papel:
   - criar/editar/excluir documento
+  - definir meios de recebimento por documento
   - criar e manter tipo no painel lateral
   - importar documentos
 
@@ -309,7 +313,7 @@
 
 - Objetivo: encapsular a selecao de meios de recebimento
 - Dependencias: `parse_delivery_methods()`
-- Papel: reduzir duplicacao entre `EmpresaTab` e `EdicaoTab`
+- Papel: reduzir duplicacao entre `DocumentoTab` e `EdicaoTab`
 
 ## 5.5 Models de dominio
 

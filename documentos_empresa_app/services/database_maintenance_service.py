@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 from pathlib import Path
 import sqlite3
 
@@ -17,13 +18,20 @@ class DatabaseMaintenanceService:
         if destination.resolve() == self.db_path.resolve():
             raise ValidationError("Escolha um arquivo diferente do banco atual para gerar o backup.")
 
+        backup_connection: sqlite3.Connection | None = None
         try:
             destination.parent.mkdir(parents=True, exist_ok=True)
             with self.db_manager.connect() as source_connection:
-                with sqlite3.connect(destination) as backup_connection:
-                    source_connection.backup(backup_connection)
+                backup_connection = sqlite3.connect(destination)
+                source_connection.backup(backup_connection)
+                backup_connection.commit()
         except (OSError, sqlite3.Error) as exc:
             raise ValidationError("Nao foi possivel gerar o backup do banco de dados.") from exc
+        finally:
+            if backup_connection is not None:
+                backup_connection.close()
+                backup_connection = None
+            gc.collect()
 
         return {
             "path": str(destination),
@@ -36,12 +44,19 @@ class DatabaseMaintenanceService:
             raise ValidationError("Selecione um arquivo de backup diferente do banco que ja esta em uso.")
 
         self._validate_sqlite_file(source)
+        source_connection: sqlite3.Connection | None = None
         try:
-            with sqlite3.connect(source) as source_connection:
+            source_connection = sqlite3.connect(source)
+            with source_connection:
                 with self.db_manager.connect() as destination_connection:
                     source_connection.backup(destination_connection)
         except sqlite3.Error as exc:
             raise ValidationError("Nao foi possivel restaurar o backup selecionado.") from exc
+        finally:
+            if source_connection is not None:
+                source_connection.close()
+                source_connection = None
+            gc.collect()
 
         return {
             "path": str(source),
@@ -61,8 +76,12 @@ class DatabaseMaintenanceService:
         return normalized
 
     def _validate_sqlite_file(self, file_path: Path) -> None:
+        connection: sqlite3.Connection | None = None
         try:
-            with sqlite3.connect(file_path) as connection:
-                connection.execute("PRAGMA schema_version").fetchone()
+            connection = sqlite3.connect(file_path)
+            connection.execute("PRAGMA schema_version").fetchone()
         except sqlite3.Error as exc:
             raise ValidationError("O arquivo selecionado nao parece ser um banco SQLite valido.") from exc
+        finally:
+            if connection is not None:
+                connection.close()

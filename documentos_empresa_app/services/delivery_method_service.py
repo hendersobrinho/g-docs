@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from documentos_empresa_app.database.repositories import DeliveryMethodRepository, EmpresaRepository
+from documentos_empresa_app.database.repositories import DeliveryMethodRepository, DocumentoRepository
 from documentos_empresa_app.services.audit_service import AuditService
 from documentos_empresa_app.services.session_service import SessionService
 from documentos_empresa_app.utils.common import ValidationError, normalize_delivery_methods, parse_delivery_methods
@@ -12,12 +12,12 @@ class DeliveryMethodService:
     def __init__(
         self,
         delivery_method_repository: DeliveryMethodRepository,
-        empresa_repository: EmpresaRepository,
+        documento_repository: DocumentoRepository,
         audit_service: AuditService | None = None,
         session_service: SessionService | None = None,
     ) -> None:
         self.delivery_method_repository = delivery_method_repository
-        self.empresa_repository = empresa_repository
+        self.documento_repository = documento_repository
         self.audit_service = audit_service
         self.session_service = session_service
 
@@ -55,64 +55,58 @@ class DeliveryMethodService:
 
         with self.delivery_method_repository.db_manager.connect():
             self.delivery_method_repository.update(method_id, nome)
-            affected_companies = self._rename_method_in_companies(current["nome_meio"], nome)
+            affected_documents = self._rename_method_in_documents(current["nome_meio"], nome)
 
         self._log(
             "EDICAO_MEIO_RECEBIMENTO",
             method_id,
             (
                 f'Usuario {self._actor_name()} alterou o meio de recebimento '
-                f'"{current["nome_meio"]}" para "{nome}". Empresas ajustadas: {affected_companies}.'
+                f'"{current["nome_meio"]}" para "{nome}". Documentos ajustados: {affected_documents}.'
             ),
         )
-        return affected_companies
+        return affected_documents
 
     def delete_method(self, method_id: int) -> int:
         method = self.get_method(method_id)
-        affected_companies = self.count_companies_using(method["nome_meio"])
+        affected_documents = self.count_documents_using(method["nome_meio"])
         self.delivery_method_repository.delete(method_id)
         self._log(
             "EXCLUSAO_MEIO_RECEBIMENTO",
             method_id,
             (
                 f'Usuario {self._actor_name()} removeu o meio de recebimento "{method["nome_meio"]}" '
-                f'da lista do sistema. Empresas ainda usando esse meio: {affected_companies}.'
+                f'da lista do sistema. Documentos ainda usando esse meio: {affected_documents}.'
             ),
         )
-        return affected_companies
+        return affected_documents
 
-    def count_companies_using(self, nome_meio: str) -> int:
+    def count_documents_using(self, nome_meio: str) -> int:
         target = self._normalize_name(nome_meio)
         total = 0
-        for company in self.empresa_repository.list_all(active_only=False):
-            methods = parse_delivery_methods(company.get("meios_recebimento"))
+        for document in self.documento_repository.list_all():
+            methods = parse_delivery_methods(document.get("meios_recebimento"))
             if any(item.casefold() == target.casefold() for item in methods):
                 total += 1
         return total
 
-    def _rename_method_in_companies(self, old_name: str, new_name: str) -> int:
+    def _rename_method_in_documents(self, old_name: str, new_name: str) -> int:
         if old_name.casefold() == new_name.casefold():
             return 0
 
         affected = 0
         known_options = [item["nome_meio"] for item in self.delivery_method_repository.list_all()]
-        for company in self.empresa_repository.list_all(active_only=False):
-            methods = parse_delivery_methods(company.get("meios_recebimento"), known_options=known_options)
+        for document in self.documento_repository.list_all():
+            methods = parse_delivery_methods(document.get("meios_recebimento"), known_options=known_options)
             if not any(item.casefold() == old_name.casefold() for item in methods):
                 continue
 
             updated_methods = [new_name if item.casefold() == old_name.casefold() else item for item in methods]
             normalized_methods = normalize_delivery_methods(updated_methods, known_options=known_options)
-            if (company.get("meios_recebimento") or "") == (normalized_methods or ""):
+            if (document.get("meios_recebimento") or "") == (normalized_methods or ""):
                 continue
 
-            self.empresa_repository.update_details(
-                company["id"],
-                company["nome_empresa"],
-                normalized_methods,
-                company.get("email_contato"),
-                company.get("nome_contato"),
-            )
+            self.documento_repository.update_delivery_methods(document["id"], normalized_methods)
             affected += 1
         return affected
 

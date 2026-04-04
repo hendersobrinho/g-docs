@@ -29,11 +29,11 @@ Existe heranca apenas em tres grupos principais:
 | `PeriodoRepository` | `database/repositories.py` | repositório | CRUD/consulta de periodos | `build_application_services()` |
 | `StatusRepository` | `database/repositories.py` | repositório | status mensal e consultas de encerramento | `build_application_services()` |
 | `EmpresaService` | `services/empresa_service.py` | servico | regras de empresa e logs associados | `build_application_services()` |
-| `DeliveryMethodService` | `services/delivery_method_service.py` | servico | regras dos meios de recebimento | `build_application_services()` |
+| `DeliveryMethodService` | `services/delivery_method_service.py` | servico | regras dos meios de recebimento e propagacao para documentos | `build_application_services()` |
 | `TipoService` | `services/tipo_service.py` | servico | regras de tipos | `build_application_services()` |
 | `DocumentoService` | `services/documento_service.py` | servico | regras de documentos e auditoria | `build_application_services()` |
 | `PeriodoService` | `services/periodo_service.py` | servico | validacao e gerenciamento de periodos | `build_application_services()` |
-| `StatusService` | `services/status_service.py` | servico | alteracao de status, encerramento e consulta consolidada | `build_application_services()` |
+| `StatusService` | `services/status_service.py` | servico | alteracao de status, ocorrencia especial, encerramento e consulta consolidada | `build_application_services()` |
 | `ImportService` | `services/import_service.py` | servico | importacao de planilhas | `build_application_services()` |
 | `PendingReportService` | `services/pending_report_service.py` | servico | gerar/exportar relatorio de pendencias | `build_application_services()` |
 | `DatabaseMaintenanceService` | `services/database_maintenance_service.py` | servico | backup e restauracao do banco | `build_application_services()` |
@@ -52,7 +52,7 @@ Existe heranca apenas em tres grupos principais:
 | `PeriodoTab` | `ui/periodo_tab.py` | aba | gerar periodos, excluir ano e exportar relatorio | `MainWindow` |
 | `UserTab` | `ui/user_tab.py` | aba | cadastro/manutencao de usuarios | `MainWindow` |
 | `LogTab` | `ui/log_tab.py` | aba | visualizacao de logs | `MainWindow` |
-| `DeliveryMethodsField` | `ui/delivery_methods_field.py` | componente | selecionar meios de recebimento | `EmpresaTab`, `EdicaoTab` |
+| `DeliveryMethodsField` | `ui/delivery_methods_field.py` | componente | selecionar meios de recebimento por documento | `DocumentoTab`, `EdicaoTab` |
 | `DatabasePathDialog` | `utils/helpers.py` | dialogo | escolher local do banco | `prompt_database_path()` |
 | `ScrollableFrame` | `utils/helpers.py` | componente | fornecer rolagem vertical para grids grandes | `ControleTab` |
 | `CompanySelector` | `utils/helpers.py` | componente | selecionar empresa por codigo/nome | `ControleTab`, `EmpresaTab`, `DocumentoTab`, `EdicaoTab` |

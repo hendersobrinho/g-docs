@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from documentos_empresa_app.utils.common import TYPE_OCCURRENCE_MENSAL
+
 
 @dataclass(slots=True)
 class Empresa:
@@ -11,6 +13,7 @@ class Empresa:
     meios_recebimento: str | None = None
     email_contato: str | None = None
     nome_contato: str | None = None
+    observacao: str | None = None
     diretorio_documentos: str | None = None
     ativa: int = 1
 
@@ -19,6 +22,7 @@ class Empresa:
 class TipoDocumento:
     id: int | None
     nome_tipo: str
+    regra_ocorrencia: str = TYPE_OCCURRENCE_MENSAL
 
 
 @dataclass(slots=True)
@@ -27,6 +31,7 @@ class DocumentoEmpresa:
     empresa_id: int
     tipo_documento_id: int
     nome_documento: str
+    meios_recebimento: str | None = None
 
 
 @dataclass(slots=True)
