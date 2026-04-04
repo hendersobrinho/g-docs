@@ -6,7 +6,7 @@
 
 Sistema desktop local para controle de recebimento de documentos empresariais.
 
-Versao atual: `1.2.0`
+Versao atual: `1.3.0`
 
 O projeto foi pensado para substituir planilhas e controles manuais por um fluxo local, auditavel e simples de operar. O foco e manter o uso direto no escritorio: cadastro de empresas, documentos por tipo, controle mensal de recebimento, relatorio de pendencias e backup do banco sem depender de servidor.
 
