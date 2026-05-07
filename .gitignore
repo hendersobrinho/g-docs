@@ -25,6 +25,7 @@ htmlcov/
 
 build/
 dist/
+dist_license/
 dist_installer/
 dist_release/
 pip-wheel-metadata/
@@ -43,6 +44,14 @@ pip-wheel-metadata/
 .venv/
 .env
 .env.*
+license.json
+*.license.json
+*.key
+*.pem
+*.p12
+*.pfx
+*_secret*
+*_secrets*
 .python-version
 .idea/
 .vscode/

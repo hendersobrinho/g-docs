@@ -95,6 +95,28 @@ python -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe main.py
 ```
 
+## Gerar licenca piloto
+
+O gerador cria uma licenca local vitalicia para ativacao do app em ambiente interno/piloto.
+
+### Linux / macOS
+
+```bash
+.venv/bin/python scripts/generate_license.py --customer "Cliente Piloto" --email "cliente@empresa.com"
+```
+
+### Windows PowerShell
+
+```powershell
+.\.venv\Scripts\python.exe scripts\generate_license.py --customer "Cliente Piloto" --email "cliente@empresa.com"
+```
+
+Saida esperada:
+
+- arquivo de licenca: `dist_license/license.json`
+
+Esse arquivo gerado e destinado ao cliente/ativacao local e nao deve ser versionado no Git.
+
 ## Primeiro acesso
 
 Em um banco novo, o sistema cria automaticamente um usuario inicial:

@@ -5,6 +5,8 @@ import tkinter as tk
 from tkinter import messagebox
 
 from documentos_empresa_app.app_context import build_application_services
+from documentos_empresa_app.services.license_service import LicenseError, LicenseService
+from documentos_empresa_app.ui.license_window import LicenseWindow
 from documentos_empresa_app.ui.login_window import LoginWindow
 from documentos_empresa_app.ui.main_window import MainWindow
 from documentos_empresa_app.utils.common import APP_NAME, ValidationError
@@ -42,6 +44,31 @@ def try_restore_saved_login(services) -> dict | None:
     return user
 
 
+def ensure_local_license() -> bool:
+    license_root = tk.Tk()
+    license_root.withdraw()
+    try:
+        license_service = LicenseService()
+        try:
+            license_service.load_and_save_if_valid()
+            return True
+        except LicenseError as exc:
+            if license_service.license_file_path.exists():
+                status_message = (
+                    "A licenca encontrada neste computador esta invalida, expirada ou corrompida.\n"
+                    f"Detalhe: {exc}\n\n"
+                    "Cole ou importe uma nova licenca para continuar."
+                )
+            else:
+                status_message = "Nenhuma licenca foi encontrada. Cole ou importe uma licenca para continuar."
+
+        license_window = LicenseWindow(license_root, license_service, status_message=status_message)
+        license_window.wait_window()
+        return license_window.license_activated
+    finally:
+        license_root.destroy()
+
+
 def main() -> None:
     while True:
         bootstrap = tk.Tk()
@@ -69,6 +96,9 @@ def main() -> None:
             if new_path is None:
                 return
             continue
+
+        if not ensure_local_license():
+            return
 
         while True:
             services.session_service.logout()

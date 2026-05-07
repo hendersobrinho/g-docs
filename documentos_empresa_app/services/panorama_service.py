@@ -62,6 +62,7 @@ class PanoramaService:
         if not periodo:
             raise ValidationError("Periodo nao encontrado.")
         periodo["label"] = format_period_label(periodo["ano"], periodo["mes"])
+        previous_period = self._get_previous_period(periodo)
 
         companies = self.empresa_repository.list_all(active_only=active_only)
         company_ids = [company["id"] for company in companies]
@@ -71,22 +72,33 @@ class PanoramaService:
             documentos_by_company.setdefault(documento["empresa_id"], []).append(documento)
 
         document_ids = [documento["id"] for documento in documentos]
+        period_ids = [periodo_id]
+        if previous_period:
+            period_ids.append(previous_period["id"])
         statuses = {
             (row["documento_empresa_id"], row["periodo_id"]): row
-            for row in self.status_repository.list_for_documents_and_periods(document_ids, [periodo_id])
+            for row in self.status_repository.list_for_documents_and_periods(document_ids, period_ids)
         }
         closures = self._get_closure_key_map(documentos)
 
-        rows = [
-            self._build_company_row(
+        rows = []
+        for company in companies:
+            company_documents = documentos_by_company.get(company["id"], [])
+            row = self._build_company_row(
                 company,
                 periodo,
-                documentos_by_company.get(company["id"], []),
+                company_documents,
                 statuses,
                 closures,
             )
-            for company in companies
-        ]
+            previous_row = (
+                self._build_company_row(company, previous_period, company_documents, statuses, closures)
+                if previous_period
+                else None
+            )
+            self._attach_previous_progress(row, previous_period, previous_row)
+            rows.append(row)
+
         rows.sort(
             key=lambda item: (
                 self.SITUATION_PRIORITIES.get(item["situacao_key"], 99),
@@ -101,9 +113,33 @@ class PanoramaService:
 
         return {
             "periodo": periodo,
+            "previous_period": previous_period,
             "rows": rows,
             "summary": summary,
         }
+
+    def _get_previous_period(self, periodo: dict) -> dict | None:
+        previous_year = periodo["ano"]
+        previous_month = periodo["mes"] - 1
+        if previous_month == 0:
+            previous_year -= 1
+            previous_month = 12
+        previous_period = self.periodo_repository.get_by_year_month(previous_year, previous_month)
+        if previous_period:
+            previous_period["label"] = format_period_label(previous_period["ano"], previous_period["mes"])
+        return previous_period
+
+    def _attach_previous_progress(
+        self,
+        row: dict,
+        previous_period: dict | None,
+        previous_row: dict | None,
+    ) -> None:
+        row["previous_period_id"] = previous_period["id"] if previous_period else None
+        row["previous_marcados"] = previous_row["marcados"] if previous_row else None
+        row["previous_total_cobravel"] = previous_row["total_cobravel"] if previous_row else None
+        row["previous_situacao"] = previous_row["situacao"] if previous_row else ""
+        row["previous_situacao_key"] = previous_row["situacao_key"] if previous_row else ""
 
     def _build_company_row(
         self,

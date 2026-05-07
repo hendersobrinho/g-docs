@@ -33,6 +33,7 @@ class PanoramaTab(ttk.Frame):
         self.search_var = tk.StringVar()
         self.active_only_var = tk.BooleanVar(value=True)
         self.summary_var = tk.StringVar(value="Selecione um periodo para carregar a conferencia mensal.")
+        self.company_code_sort_desc: bool | None = None
 
         self.situation_key_by_label = {
             label: key for key, label in PanoramaService.SITUATION_LABELS.items()
@@ -96,6 +97,7 @@ class PanoramaTab(ttk.Frame):
                 "empresa",
                 "situacao",
                 "progresso",
+                "mes_anterior",
                 "recebidos",
                 "pendentes",
                 "faltando",
@@ -108,6 +110,7 @@ class PanoramaTab(ttk.Frame):
         self.tree.heading("empresa", text="Empresa")
         self.tree.heading("situacao", text="Situacao")
         self.tree.heading("progresso", text="Progresso")
+        self.tree.heading("mes_anterior", text="Mes anterior")
         self.tree.heading("recebidos", text="Recebidos")
         self.tree.heading("pendentes", text="Pendentes")
         self.tree.heading("faltando", text="Faltando")
@@ -116,12 +119,13 @@ class PanoramaTab(ttk.Frame):
         self.tree.column("empresa", width=340)
         self.tree.column("situacao", width=150, anchor="center")
         self.tree.column("progresso", width=100, anchor="center")
+        self.tree.column("mes_anterior", width=110, anchor="center")
         self.tree.column("recebidos", width=100, anchor="center")
         self.tree.column("pendentes", width=100, anchor="center")
         self.tree.column("faltando", width=100, anchor="center")
         self.tree.column("ultima_marcacao", width=210, anchor="center")
         self.tree.grid(row=0, column=0, sticky="nsew")
-        self.tree.bind("<Double-1>", lambda _event: self.open_selected_company())
+        self.tree.bind("<Double-1>", self._on_tree_double_click)
         self.tree.bind("<Return>", lambda _event: self.open_selected_company())
 
         scrollbar_y = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
@@ -266,6 +270,7 @@ class PanoramaTab(ttk.Frame):
 
         self.tree.delete(*self.tree.get_children())
         filtered_rows = self._filtered_rows()
+        filtered_rows = self._sorted_rows(filtered_rows)
 
         for row in filtered_rows:
             progress = f'{row["marcados"]}/{row["total_cobravel"]}'
@@ -279,6 +284,7 @@ class PanoramaTab(ttk.Frame):
                     company_name,
                     row["situacao"],
                     progress,
+                    self._format_previous_progress(row),
                     row["recebidos"],
                     row["pendentes"],
                     row["faltando"],
@@ -307,6 +313,28 @@ class PanoramaTab(ttk.Frame):
 
             rows.append(row)
         return rows
+
+    def _sorted_rows(self, rows: list[dict]) -> list[dict]:
+        if self.company_code_sort_desc is None:
+            return rows
+        return sorted(
+            rows,
+            key=lambda row: (row["codigo_empresa"], row["nome_empresa"].casefold()),
+            reverse=self.company_code_sort_desc,
+        )
+
+    def toggle_company_code_sort(self) -> None:
+        self.company_code_sort_desc = False if self.company_code_sort_desc is None else not self.company_code_sort_desc
+        direction = "v" if self.company_code_sort_desc else "^"
+        self.tree.heading("codigo", text=f"Codigo {direction}")
+        self._populate_tree()
+
+    def _format_previous_progress(self, row: dict) -> str:
+        previous_marcados = row.get("previous_marcados")
+        previous_total = row.get("previous_total_cobravel")
+        if previous_marcados is None or previous_total is None:
+            return "-"
+        return f"{previous_marcados}/{previous_total}"
 
     def _format_last_marker(self, row: dict) -> str:
         updated_at = row.get("ultima_marcacao_em")
@@ -354,6 +382,13 @@ class PanoramaTab(ttk.Frame):
         self.search_var.set("")
         self.situation_var.set(self.ALL_SITUATIONS)
         self._populate_tree()
+
+    def _on_tree_double_click(self, event: tk.Event) -> str | None:
+        if self.tree.identify_region(event.x, event.y) == "heading":
+            if self.tree.identify_column(event.x) == "#1":
+                self.toggle_company_code_sort()
+            return "break"
+        return self.open_selected_company()
 
     def open_selected_company(self) -> str | None:
         selection = self.tree.selection()

@@ -762,6 +762,9 @@ class PeriodoRepository(BaseRepository):
     def get_by_id(self, periodo_id: int) -> dict | None:
         return self._fetchone("SELECT id, ano, mes FROM periodos WHERE id = ?", (periodo_id,))
 
+    def get_by_year_month(self, ano: int, mes: int) -> dict | None:
+        return self._fetchone("SELECT id, ano, mes FROM periodos WHERE ano = ? AND mes = ?", (ano, mes))
+
     def create(self, ano: int, mes: int) -> int:
         return self._execute("INSERT INTO periodos (ano, mes) VALUES (?, ?)", (ano, mes))
 

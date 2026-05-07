@@ -766,6 +766,27 @@ class ApplicationServiceTests(unittest.TestCase):
         self.assertEqual(row["recebidos"], 1)
         self.assertEqual(row["faltando"], 1)
 
+    def test_panorama_includes_previous_month_progress(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(139, "Empresa Progresso Anterior")
+        tipo_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
+        documento_a_id = self.documento_service.create_documento(empresa_id, tipo_id, "Banco A")
+        documento_b_id = self.documento_service.create_documento(empresa_id, tipo_id, "Banco B")
+        self.periodo_service.generate_year(2026)
+        janeiro = self._periodo(2026, 1)
+        fevereiro = self._periodo(2026, 2)
+
+        self.status_service.update_status(documento_a_id, janeiro["id"], "Recebido")
+        self.status_service.update_status(documento_b_id, fevereiro["id"], "Recebido")
+
+        row = self._panorama_row(empresa_id, fevereiro["id"])
+
+        self.assertEqual(row["marcados"], 1)
+        self.assertEqual(row["total_cobravel"], 2)
+        self.assertEqual(row["previous_period_id"], janeiro["id"])
+        self.assertEqual(row["previous_marcados"], 1)
+        self.assertEqual(row["previous_total_cobravel"], 2)
+        self.assertEqual(row["previous_situacao"], "Em andamento")
+
     def test_panorama_marks_company_with_pending_status(self) -> None:
         empresa_id = self.empresa_service.create_empresa(133, "Empresa Com Pendencia")
         tipo_id = self.tipo_service.get_or_create_tipo("Contratos")["id"]
