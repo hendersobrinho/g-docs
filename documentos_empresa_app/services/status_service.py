@@ -351,6 +351,7 @@ class StatusService:
         return {
             "id": documento["id"],
             "nome_documento": documento["nome_documento"],
+            "meios_recebimento": documento.get("meios_recebimento") or "",
             "tipo_id": documento["tipo_documento_id"],
             "tipo_nome": documento["nome_tipo"],
             "tipo_ocorrencia": occurrence_rule,

@@ -13,7 +13,7 @@ from documentos_empresa_app import __version__
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 README_PATH = ROOT_DIR / "README.md"
-INSTALLER_PATH = ROOT_DIR / "installer" / "G-docs.iss"
+INSTALLER_PATH = ROOT_DIR / "assets" / "installer" / "DocFLow.iss"
 GENERATE_ICONS_SCRIPT_PATH = ROOT_DIR / "scripts" / "generate_icons.py"
 
 
@@ -40,6 +40,17 @@ class ReleaseFileTests(unittest.TestCase):
         match = re.search(r'#define AppVersion "([^"]+)"', installer_text)
         self.assertIsNotNone(match)
         self.assertEqual(match.group(1), __version__)
+
+    def test_installer_uses_docflow_branding(self) -> None:
+        installer_text = INSTALLER_PATH.read_text(encoding="utf-8")
+        self.assertIn('#define AppName "DocFLow"', installer_text)
+        self.assertIn('#define AppExeName "DocFLow.exe"', installer_text)
+
+    def test_simple_svg_fallback_renders_master_icon(self) -> None:
+        image = GENERATE_ICONS_MODULE.render_simple_svg(GENERATE_ICONS_MODULE.MASTER_ICON_PATH)
+
+        self.assertEqual(image.size, (GENERATE_ICONS_MODULE.OUTPUT_SIZE, GENERATE_ICONS_MODULE.OUTPUT_SIZE))
+        self.assertIsNotNone(image.getchannel("A").getbbox())
 
     def test_optional_icns_failure_does_not_block_non_macos_builds(self) -> None:
         output = io.StringIO()

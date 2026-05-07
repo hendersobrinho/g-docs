@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/capa.png" alt="Capa do G-docs" width="100%">
+  <img src="assets/capa.png" alt="Capa do DocFLow" width="100%">
 </p>
 
-# G-docs
+# DocFLow
 
 Sistema desktop local para controle de recebimento de documentos empresariais.
 
@@ -12,16 +12,17 @@ O projeto foi pensado para substituir planilhas e controles manuais por um fluxo
 
 ## Visao geral
 
-O G-docs permite:
+O DocFLow permite:
 
 - cadastrar e manter empresas
 - cadastrar documentos por empresa e por tipo
 - vincular meios de recebimento por documento
 - controlar status por periodo
+- acompanhar a conferencia mensal por empresa em uma visao panoramica
 - aplicar regras de ocorrencia mensal, trimestral e anual em janeiro
 - exportar pendencias em Excel
 - manter logs administrativos
-- gerar backup e restaurar o banco pela interface
+- gerar backup manual, configurar backup automatico e restaurar o banco pela interface
 
 ## Principais recursos
 
@@ -33,6 +34,8 @@ O G-docs permite:
 - observacao por empresa com ate `255` caracteres
 - status automatico `Nao cobrar` para meses fora da ocorrencia do tipo
 - regra de encerramento que bloqueia meses posteriores
+- aba Panorama para filtrar empresas por situacao mensal de conferencia
+- backup automatico configuravel em pasta fora da instalacao
 - importacao e exportacao em Excel
 - build com `PyInstaller`
 - instalador Windows com `Inno Setup`
@@ -129,8 +132,8 @@ bash scripts/build_release.sh
 
 Saidas esperadas:
 
-- build PyInstaller: `dist/G-docs/`
-- pacote versionado: `dist_release/G-docs-linux-<arquitetura>-v<versao>.tar.gz`
+- build PyInstaller: `dist/DocFLow/`
+- pacote versionado: `dist_release/DocFLow-linux-<arquitetura>-v<versao>.tar.gz`
 
 ### macOS
 
@@ -140,8 +143,8 @@ bash scripts/build_release.sh
 
 Saidas esperadas:
 
-- build PyInstaller: `dist/G-docs/`
-- pacote versionado: `dist_release/G-docs-macos-<arquitetura>-v<versao>.tar.gz`
+- build PyInstaller: `dist/DocFLow/`
+- pacote versionado: `dist_release/DocFLow-macos-<arquitetura>-v<versao>.tar.gz`
 
 ### Windows
 
@@ -151,12 +154,12 @@ scripts\build_release.bat
 
 Saidas esperadas:
 
-- build PyInstaller: `dist\G-docs\`
-- executavel principal: `dist\G-docs\G-docs.exe`
-- pacote versionado: `dist_release\G-docs-win64-v<versao>.zip`
+- build PyInstaller: `dist\DocFLow\`
+- executavel principal: `dist\DocFLow\DocFLow.exe`
+- pacote versionado: `dist_release\DocFLow-win64-v<versao>.zip`
 - se o `Inno Setup` estiver no `PATH`, o script tambem tenta gerar o instalador
 
-Se a pasta `dist\G-docs\` for criada vazia ou sem `G-docs.exe`, o build nao terminou corretamente. Nesse caso, rode manualmente:
+Se a pasta `dist\DocFLow\` for criada vazia ou sem `DocFLow.exe`, o build nao terminou corretamente. Nesse caso, rode manualmente:
 
 ```powershell
 py -m PyInstaller --noconfirm --clean documentos_empresa_app.spec
@@ -190,8 +193,8 @@ scripts\build_release.bat
 ├── requirements.txt
 ├── documentos_empresa_app.spec
 ├── assets/
+│   └── installer/
 ├── docs/
-├── installer/
 ├── scripts/
 ├── tests/
 └── documentos_empresa_app/
@@ -210,8 +213,8 @@ scripts\build_release.bat
 - `documentos_empresa_app/services/`: regras de negocio
 - `documentos_empresa_app/ui/`: interface Tkinter
 - `documentos_empresa_app/utils/`: constantes, seguranca, recursos e helpers
+- `assets/installer/`: script do Inno Setup para Windows
 - `scripts/`: build e geracao de icones
-- `installer/`: script do Inno Setup para Windows
 - `tests/`: testes automatizados
 - `docs/`: documentacao tecnica detalhada
 
@@ -220,7 +223,7 @@ scripts\build_release.bat
 - `documentos_empresa_app.spec`: receita do `PyInstaller`
 - `scripts/build_release.sh`: build Linux/macOS com pacote `.tar.gz`
 - `scripts/build_release.bat`: build Windows com `.zip` e tentativa opcional de instalador
-- `installer/G-docs.iss`: instalador Windows
+- `assets/installer/DocFLow.iss`: instalador Windows
 - `scripts/generate_icons.py`: gera `icon.png`, `icon.ico` e `icon.icns`
 
 ## Banco e seguranca
@@ -230,6 +233,7 @@ scripts\build_release.bat
 - o login lembrado e local ao perfil do sistema operacional
 - a credencial lembrada expira em `60` dias sem uso
 - o token lembrado e renovado automaticamente a cada autenticacao bem-sucedida
+- o backup automatico fica em pasta configuravel, com padrao em `Documents/DocFLow/backups` ou `Documentos/DocFLow/backups` quando disponivel
 - backups restaurados precisam conter a estrutura esperada do sistema
 
 ## Fluxo principal de uso
@@ -241,7 +245,7 @@ scripts\build_release.bat
 5. Gerar os periodos do ano.
 6. Controlar os status na aba `Controle`.
 7. Exportar pendencias ou consultar logs quando necessario.
-8. Gerar backup periodicamente.
+8. Configurar backup automatico ou gerar backup manual periodicamente.
 
 ## Regras de negocio principais
 

@@ -111,6 +111,9 @@
 ## 11.13 Backup e restauracao
 
 - backup gera uma copia completa do SQLite em outro arquivo
+- backup automatico gera copias datadas em pasta configuravel pelo usuario
+- a pasta padrao fica fora da instalacao, em `Documents/DocFLow/backups` ou `Documentos/DocFLow/backups` quando disponivel
+- o usuario configura intervalo em dias e quantos backups automaticos devem ser mantidos
 - restauracao substitui o banco atual pelo backup escolhido
 - apos restaurar, o sistema reinicia para recarregar os dados com seguranca
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
 import gc
 from pathlib import Path
+import re
 import sqlite3
 
 from documentos_empresa_app.database.connection import DatabaseManager
@@ -47,6 +49,52 @@ class DatabaseMaintenanceService:
             "size_bytes": destination.stat().st_size,
         }
 
+    def create_timestamped_backup(
+        self,
+        target_directory: str | Path,
+        *,
+        when: datetime | None = None,
+        prefix: str | None = None,
+        keep_last: int | None = None,
+    ) -> dict:
+        directory = Path(str(target_directory or "").strip()).expanduser()
+        if not directory.name:
+            raise ValidationError("Informe a pasta de destino para o backup automatico.")
+
+        backup_time = when or datetime.now()
+        backup_prefix = self._normalize_backup_prefix(prefix or self.db_path.stem)
+        backup_path = directory / f"{backup_prefix}_auto_backup_{backup_time:%Y%m%d_%H%M%S}.db"
+        result = self.create_backup(backup_path)
+        result["removed_backups"] = []
+        if keep_last is not None:
+            result["removed_backups"] = self.prune_timestamped_backups(
+                directory,
+                prefix=backup_prefix,
+                keep_last=keep_last,
+            )
+        return result
+
+    def prune_timestamped_backups(self, directory: str | Path, *, prefix: str | None = None, keep_last: int) -> list[str]:
+        keep_count = max(1, int(keep_last))
+        backup_prefix = self._normalize_backup_prefix(prefix or self.db_path.stem)
+        backup_directory = Path(directory).expanduser()
+        if not backup_directory.exists():
+            return []
+
+        backup_files = sorted(
+            backup_directory.glob(f"{backup_prefix}_auto_backup_*.db"),
+            key=lambda path: path.name,
+            reverse=True,
+        )
+        removed_paths: list[str] = []
+        for backup_file in backup_files[keep_count:]:
+            try:
+                backup_file.unlink()
+            except OSError:
+                continue
+            removed_paths.append(str(backup_file))
+        return removed_paths
+
     def restore_backup(self, source_path: str | Path) -> dict:
         source = self._normalize_existing_file(source_path)
         if source.resolve() == self.db_path.resolve():
@@ -91,6 +139,10 @@ class DatabaseMaintenanceService:
         if not normalized.name:
             raise ValidationError("Informe o arquivo de destino para o backup.")
         return normalized
+
+    def _normalize_backup_prefix(self, raw_prefix: str) -> str:
+        normalized = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(raw_prefix).strip())
+        return normalized.strip("._-") or "docflow"
 
     def _normalize_existing_file(self, raw_path: str | Path) -> Path:
         normalized = self._normalize_target_path(raw_path)

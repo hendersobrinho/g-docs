@@ -5,6 +5,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from documentos_empresa_app.utils.common import parse_delivery_methods
 from documentos_empresa_app.utils.helpers import (
     CompanySelector,
     MONTH_NAMES,
@@ -50,6 +51,8 @@ class ControleTab(ttk.Frame):
         self.end_year_var = tk.StringVar()
         self.end_month_var = tk.StringVar()
         self.message_var = tk.StringVar(value=self.default_message_text)
+        self.company_observation_var = tk.StringVar(value="Observacao: -")
+        self.company_receiving_var = tk.StringVar(value="Recebimentos dos documentos: -")
         self.bulk_period_var = tk.StringVar()
         self.bulk_status_var = tk.StringVar()
         self.bulk_selection_summary_var = tk.StringVar(value="Nenhum documento selecionado.")
@@ -123,9 +126,26 @@ class ControleTab(ttk.Frame):
 
         ttk.Label(self, textvariable=self.message_var).pack(fill="x", pady=(0, 8))
 
-        result_frame = ttk.LabelFrame(self, text="Consulta e controle mensal", padding=10)
-        result_frame.pack(fill="both", expand=True)
-        self.bulk_panel = ttk.Frame(result_frame)
+        self.company_detail_panel = ttk.LabelFrame(self, text="Detalhes da empresa", padding=10)
+        self.company_observation_label = ttk.Label(
+            self.company_detail_panel,
+            textvariable=self.company_observation_var,
+            justify="left",
+            wraplength=1000,
+        )
+        self.company_observation_label.pack(fill="x")
+        self.company_receiving_label = ttk.Label(
+            self.company_detail_panel,
+            textvariable=self.company_receiving_var,
+            justify="left",
+            wraplength=1000,
+        )
+        self.company_receiving_label.pack(fill="x", pady=(6, 0))
+        self.company_detail_panel.bind("<Configure>", self._update_company_observation_wraplength)
+
+        self.result_frame = ttk.LabelFrame(self, text="Consulta e controle mensal", padding=10)
+        self.result_frame.pack(fill="both", expand=True)
+        self.bulk_panel = ttk.Frame(self.result_frame)
         ttk.Label(self.bulk_panel, textvariable=self.bulk_selection_summary_var).grid(
             row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 6)
         )
@@ -164,7 +184,7 @@ class ControleTab(ttk.Frame):
             command=self.apply_bulk_status,
         )
         self.bulk_apply_button.grid(row=1, column=4, sticky="w")
-        self.scrollable = ScrollableFrame(result_frame)
+        self.scrollable = ScrollableFrame(self.result_frame)
         self.scrollable.pack(fill="both", expand=True)
         self.bulk_panel.grid_columnconfigure(4, weight=1)
         self._set_directory_actions_enabled(False)
@@ -210,6 +230,7 @@ class ControleTab(ttk.Frame):
                     self.current_view = None
                     self._clear_bulk_context()
                     self._set_default_message("Selecione a empresa e o intervalo para consultar.")
+                    self._hide_company_detail_panel()
                     self._clear_result_area()
         else:
             self._clear_invalid_selections()
@@ -391,6 +412,7 @@ class ControleTab(ttk.Frame):
         self._sync_month_values("start")
         self._sync_month_values("end")
         self._set_default_message("Selecione a empresa e o intervalo para consultar.")
+        self._hide_company_detail_panel()
         self._clear_result_area()
 
     def consult(
@@ -418,6 +440,30 @@ class ControleTab(ttk.Frame):
             "end_period_id": end_period_id,
         }
         self._reload_current_view(scroll_position=scroll_position)
+
+    def open_company_period(self, company_id: int, period_id: int) -> bool:
+        self.refresh_data()
+        self.company_selector.set_company(company_id)
+        if self.company_selector.get_selected_company_id() != company_id:
+            messagebox.showwarning(
+                "Controle",
+                "A empresa selecionada no Panorama nao esta ativa para consulta.",
+                parent=self,
+            )
+            return False
+
+        try:
+            self._set_period_filter_values(period_id, period_id)
+        except ValidationError as exc:
+            messagebox.showerror("Controle", str(exc), parent=self)
+            return False
+
+        self.current_filters = {
+            "company_id": company_id,
+            "start_period_id": period_id,
+            "end_period_id": period_id,
+        }
+        return self._reload_current_view()
 
     def _reload_current_view(self, scroll_position: float | None = None) -> bool:
         if not self.current_filters:
@@ -448,6 +494,7 @@ class ControleTab(ttk.Frame):
 
         periodos = view["periodos"]
         groups = view["groups"]
+        self._show_company_detail_panel(view["empresa"], groups)
         if not groups:
             self._clear_bulk_context()
             self._set_default_message("Nenhum documento encontrado para a empresa e periodo informados.")
@@ -642,7 +689,11 @@ class ControleTab(ttk.Frame):
         if not visible:
             self._set_document_row_visible(document["id"], visible=False)
 
-    def _create_document_name_cell(self, document: dict, row_index: int) -> tuple[tk.Widget, tk.Label, tk.Checkbutton | None]:
+    def _create_document_name_cell(
+        self,
+        document: dict,
+        row_index: int,
+    ) -> tuple[tk.Widget, tk.Label, tk.Checkbutton | None]:
         background = self._bulk_document_background(document["id"])
         if not self.bulk_mode_enabled:
             name_label = tk.Label(
@@ -895,6 +946,7 @@ class ControleTab(ttk.Frame):
                 f'atualizado(s) em {period_short_label} com {status_message}.'
             )
         )
+        self.on_data_changed()
 
     def _create_status_cell(
         self,
@@ -1011,6 +1063,7 @@ class ControleTab(ttk.Frame):
             messagebox.showerror("Controle", str(exc), parent=self)
             return
         self._refresh_document_row_from_service(document_id)
+        self.on_data_changed()
 
     def toggle_group(self, group_name: str) -> None:
         scroll_position = self._get_scroll_position()
@@ -1025,6 +1078,37 @@ class ControleTab(ttk.Frame):
         self.document_header_frame = None
         for child in self.scrollable.inner.winfo_children():
             child.destroy()
+
+    def _show_company_detail_panel(self, company: dict, groups: list[dict]) -> None:
+        observation = str(company.get("observacao") or "").strip() or "-"
+        self.company_observation_var.set(f"Observacao: {observation}")
+        self.company_receiving_var.set(f"Recebimentos dos documentos: {self._build_receiving_summary(groups)}")
+        if not self.company_detail_panel.winfo_manager():
+            self.company_detail_panel.pack(fill="x", pady=(0, 8), before=self.result_frame)
+
+    def _hide_company_detail_panel(self) -> None:
+        self.company_observation_var.set("Observacao: -")
+        self.company_receiving_var.set("Recebimentos dos documentos: -")
+        if self.company_detail_panel.winfo_manager():
+            self.company_detail_panel.pack_forget()
+
+    def _update_company_observation_wraplength(self, event=None) -> None:
+        width = max((event.width if event else self.company_detail_panel.winfo_width()) - 24, 240)
+        self.company_observation_label.configure(wraplength=width)
+        self.company_receiving_label.configure(wraplength=width)
+
+    def _build_receiving_summary(self, groups: list[dict]) -> str:
+        methods: list[str] = []
+        seen_methods: set[str] = set()
+        for group in groups:
+            for document in group.get("documentos", []):
+                for method in parse_delivery_methods(document.get("meios_recebimento")):
+                    method_key = method.casefold()
+                    if method_key in seen_methods:
+                        continue
+                    seen_methods.add(method_key)
+                    methods.append(method)
+        return ", ".join(methods) if methods else "-"
 
     def _get_cached_document(self, document_id: int) -> dict | None:
         if not self.current_view:

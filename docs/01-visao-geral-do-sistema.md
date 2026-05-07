@@ -4,7 +4,7 @@
 
 ## 1.1 Objetivo do sistema
 
-O G-docs e uma aplicacao desktop local, escrita em Python com Tkinter e SQLite, voltada ao controle operacional de documentos recebidos de diferentes empresas. O projeto prioriza simplicidade de uso, persistencia local, rastreabilidade e manutencao direta.
+O DocFLow e uma aplicacao desktop local, escrita em Python com Tkinter e SQLite, voltada ao controle operacional de documentos recebidos de diferentes empresas. O projeto prioriza simplicidade de uso, persistencia local, rastreabilidade e manutencao direta.
 
 ## 1.2 Problema que o sistema resolve
 
@@ -65,6 +65,8 @@ O projeto permanece propositalmente enxuto:
 - compatibilidade com layouts legados de importacao
 - relatorio de pendencias em Excel
 - backup e restauracao do banco
+- backup automatico configuravel em pasta externa
+- tela `Sobre` com versao e contato de suporte
 - vinculo opcional de pasta local por empresa
 - logs por usuario, empresa e periodo
 
@@ -78,6 +80,6 @@ O projeto permanece propositalmente enxuto:
 6. Abrir a aba `Controle`.
 7. Consultar a empresa no intervalo desejado.
 8. Alterar apenas os meses cobraveis daquele tipo.
-9. Exportar pendencias, consultar logs ou gerar backup quando necessario.
+9. Exportar pendencias, consultar logs ou configurar backup quando necessario.
 
 ---

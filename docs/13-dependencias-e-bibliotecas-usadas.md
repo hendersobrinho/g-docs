@@ -74,7 +74,7 @@ Estas dependencias nao sao obrigatorias para o projeto funcionar em todos os flu
 ### `Inno Setup`
 
 - Nao e dependencia Python
-- Necessario apenas para gerar instalador Windows a partir de `installer/G-docs.iss`
+- Necessario apenas para gerar instalador Windows a partir de `assets/installer/DocFLow.iss`
 - O script `build_release.bat` tenta usá-lo automaticamente quando `iscc` esta no `PATH`
 
 ### `cairosvg`

@@ -13,7 +13,6 @@ Arquivos e pastas que fazem parte do projeto:
 - `documentos_empresa_app.spec`
 - `assets/`
 - `scripts/`
-- `installer/`
 - `tests/`
 - `docs/`
 
@@ -49,7 +48,7 @@ Isso evita que o repositório acumule restos de empacotamento ao longo das entre
 1. atualizar codigo e documentacao
 2. rodar os testes
 3. gerar o build no sistema operacional correto
-4. validar a pasta `dist/G-docs`
+4. validar a pasta `dist/DocFLow`
 5. distribuir o artefato de `dist_release/`
 6. no Windows, gerar o instalador com `Inno Setup` quando necessario
 

@@ -14,7 +14,8 @@
 ### `MainWindow`
 
 - mostra nome do sistema, banco atual e usuario logado
-- oferece menu `Banco` com backup e restauracao
+- oferece menu `Banco` com backup manual, backup automatico e restauracao
+- oferece menu `Ajuda` com a tela `Sobre`
 - libera restauracao apenas para admin
 - monta abas conforme permissao
 
@@ -27,7 +28,17 @@
 - mostra badge visual para tipos com ocorrencia especial
 - exibe `OptionMenu` apenas em meses cobraveis
 - exibe `Nao cobrar` automaticamente nos meses fora da ocorrencia
+- exibe observacao da empresa e meios de recebimento dos documentos na consulta
 - permite vincular/alterar a pasta local da empresa selecionada
+
+### `PanoramaTab`
+
+- mostra a conferencia mensal de empresas em uma lista geral
+- filtra por ano, mes, situacao, fila de trabalho, busca textual e empresas ativas
+- resume cada empresa como `Sem documentos`, `Sem cobranca`, `Nao iniciada`, `Em andamento`, `Com pendencia` ou `Concluida`
+- ordena a lista por prioridade operacional
+- mostra progresso, recebidos, pendentes, faltantes e ultima marcacao
+- permite abrir a empresa diretamente na aba `Controle` para o mes escolhido
 
 ### `EmpresaTab`
 

@@ -12,6 +12,8 @@
 ├── documentos_empresa_app.spec
 ├── assets/
 │   ├── capa.png
+│   ├── installer/
+│   │   └── DocFLow.iss
 │   └── icons/
 │       ├── icon.svg
 │       ├── icon.png
@@ -70,8 +72,6 @@
 │       ├── security.py
 │       ├── storage.py
 │       └── type_names.py
-├── installer/
-│   └── G-docs.iss
 ├── scripts/
 │   ├── build_release.bat
 │   ├── build_release.sh
@@ -104,6 +104,10 @@ Concentra os arquivos do icone do sistema de forma organizada e preparada para e
 | `icon.png` | derivado para Linux e interface | usado na janela Tkinter e em integracao visual no Linux |
 | `icon.ico` | derivado para Windows | usado no executavel Windows e no instalador |
 | `icon.icns` | derivado para macOS | usado no app bundle do macOS |
+
+### Pasta `assets/installer/`
+
+Contem o script `DocFLow.iss`, usado pelo Inno Setup para gerar instalador Windows.
 
 ### Pasta `docs/`
 
@@ -154,6 +158,7 @@ E a camada de regras de negocio.
 | `periodo_service.py` | regras de periodos |
 | `status_service.py` | status mensal, ocorrencia especial por tipo, encerramento e montagem da visao de controle |
 | `import_service.py` | importacao via Excel |
+| `panorama_service.py` | visao mensal consolidada por empresa |
 | `pending_report_service.py` | exportacao do relatorio de pendencias |
 | `session_service.py` | sessao do usuario logado |
 | `user_service.py` | administracao de usuarios |
@@ -165,6 +170,8 @@ Contem a interface grafica Tkinter.
 
 | Arquivo | Papel |
 |---|---|
+| `about_dialog.py` | janela `Sobre` com versao e contato |
+| `backup_settings_dialog.py` | configuracao do backup automatico |
 | `login_window.py` | janela inicial de login |
 | `main_window.py` | janela principal e composicao das abas |
 | `controle_tab.py` | consulta e alteracao de status por periodo |
@@ -175,6 +182,7 @@ Contem a interface grafica Tkinter.
 | `tipo_tab.py` | tela auxiliar/legada para tipos; nao e montada pela `MainWindow` atual |
 | `edicao_tab.py` | tela auxiliar/legada para manutencao consolidada; nao e montada pela `MainWindow` atual |
 | `periodo_tab.py` | geracao de periodos e exclusao de ano |
+| `panorama_tab.py` | conferencia mensal consolidada por empresa |
 | `user_tab.py` | gestao de usuarios, restrita a admin |
 | `log_tab.py` | visualizacao de logs, restrita a admin |
 | `delivery_methods_field.py` | componente reutilizavel para meios de recebimento por documento |
@@ -185,6 +193,7 @@ Reune funcoes auxiliares, constantes, seguranca e integracoes com ambiente.
 
 | Arquivo | Responsabilidade |
 |---|---|
+| `auto_backup.py` | configuracao e regra de vencimento do backup automatico |
 | `common.py` | constantes globais, regras reutilizaveis de ocorrencia, funcoes de apoio e `ValidationError` |
 | `helpers.py` | configuracao, selecao do banco, componentes auxiliares de UI |
 | `display.py` | detecao de monitor para posicionamento da janela |
@@ -200,10 +209,6 @@ Contem scripts auxiliares para empacotamento:
 - `generate_icons.py`: gera os formatos derivados do icone a partir do arquivo mestre
 - `build_release.sh`: build em Linux/macOS
 - `build_release.bat`: build em Windows
-
-### Pasta `installer/`
-
-Contem o script `G-docs.iss`, usado pelo Inno Setup para gerar instalador Windows.
 
 ### Pasta `tests/`
 

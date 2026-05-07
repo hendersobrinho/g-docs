@@ -51,8 +51,8 @@ if not defined ICON_PYTHON (
 
 set "RUN_TESTS=%RUN_TESTS%"
 if not defined RUN_TESTS set "RUN_TESTS=1"
-set "DIST_DIR=dist\G-docs"
-set "APP_EXE=%DIST_DIR%\G-docs.exe"
+set "DIST_DIR=dist\DocFLow"
+set "APP_EXE=%DIST_DIR%\DocFLow.exe"
 
 if not "%RUN_TESTS%"=="0" (
     echo Executando testes antes do build...
@@ -88,7 +88,7 @@ if not defined APP_VERSION (
 )
 
 if not exist "dist_release" mkdir "dist_release"
-set "ZIP_PATH=dist_release\G-docs-win64-v%APP_VERSION%.zip"
+set "ZIP_PATH=dist_release\DocFLow-win64-v%APP_VERSION%.zip"
 if exist "%ZIP_PATH%" del /f /q "%ZIP_PATH%"
 
 echo Empacotando arquivos finais...
@@ -104,10 +104,10 @@ where iscc >nul 2>&1
 if not errorlevel 1 (
     echo.
     echo Inno Setup detectado. Gerando instalador...
-    iscc installer\G-docs.iss
+    iscc assets\installer\DocFLow.iss
     if errorlevel 1 exit /b 1
 ) else (
     echo.
     echo Inno Setup nao encontrado no PATH.
-    echo Para gerar o instalador, abra installer\G-docs.iss no Inno Setup ou execute "iscc installer\G-docs.iss".
+    echo Para gerar o instalador, abra assets\installer\DocFLow.iss no Inno Setup ou execute "iscc assets\installer\DocFLow.iss".
 )

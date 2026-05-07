@@ -24,6 +24,7 @@ from documentos_empresa_app.services.documento_service import DocumentoService
 from documentos_empresa_app.services.empresa_service import EmpresaService
 from documentos_empresa_app.services.import_service import ImportService
 from documentos_empresa_app.services.log_service import LogService
+from documentos_empresa_app.services.panorama_service import PanoramaService
 from documentos_empresa_app.services.pending_report_service import PendingReportService
 from documentos_empresa_app.services.periodo_service import PeriodoService
 from documentos_empresa_app.services.session_service import SessionService
@@ -46,6 +47,7 @@ class ApplicationServices:
     user_service: UserService
     log_service: LogService
     pending_report_service: PendingReportService
+    panorama_service: PanoramaService
     session_service: SessionService
 
 
@@ -98,6 +100,12 @@ def build_application_services(db_path: str | Path, session_service: SessionServ
         audit_service=audit_service,
         session_service=session,
     )
+    panorama_service = PanoramaService(
+        empresa_repository,
+        documento_repository,
+        periodo_repository,
+        status_repository,
+    )
     import_service = ImportService(
         empresa_service,
         tipo_service,
@@ -127,5 +135,6 @@ def build_application_services(db_path: str | Path, session_service: SessionServ
         user_service=user_service,
         log_service=log_service,
         pending_report_service=pending_report_service,
+        panorama_service=panorama_service,
         session_service=session,
     )

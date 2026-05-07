@@ -5,8 +5,12 @@ from pathlib import Path
 import sys
 
 
-APP_NAME = "G-docs"
-LEGACY_CONFIG_DIR = Path.home() / ".documentos_empresa_app"
+APP_NAME = "DocFLow"
+LEGACY_CONFIG_DIRS = (
+    Path.home() / ".g_docs",
+    Path.home() / ".documentos_empresa_app",
+)
+LEGACY_CONFIG_DIR = LEGACY_CONFIG_DIRS[-1]
 
 
 def get_default_config_dir() -> Path:
@@ -17,12 +21,12 @@ def get_default_config_dir() -> Path:
         return Path.home() / "AppData" / "Roaming" / APP_NAME
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / APP_NAME
-    return Path.home() / ".g_docs"
+    return Path.home() / ".docflow"
 
 
 CONFIG_DIR = get_default_config_dir()
 CONFIG_FILE = CONFIG_DIR / "config.json"
-DEFAULT_DB_NAME = "g_docs.db"
+DEFAULT_DB_NAME = "docflow.db"
 DOCUMENT_DELIVERY_OPTIONS = (
     "WhatsApp",
     "Email",

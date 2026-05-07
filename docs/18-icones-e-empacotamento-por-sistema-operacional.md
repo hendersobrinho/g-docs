@@ -20,7 +20,7 @@ Os arquivos envolvidos no empacotamento sao:
 - `documentos_empresa_app.spec`: receita do `PyInstaller`
 - `scripts/build_release.sh`: build Linux/macOS
 - `scripts/build_release.bat`: build Windows
-- `installer/G-docs.iss`: instalador Windows com `Inno Setup`
+- `assets/installer/DocFLow.iss`: instalador Windows com `Inno Setup`
 
 ## 18.3 Como o projeto escolhe os icones
 
@@ -48,8 +48,8 @@ bash scripts/build_release.sh
 
 Saidas:
 
-- `dist/G-docs/`
-- `dist_release/G-docs-linux-<arquitetura>-v<versao>.tar.gz`
+- `dist/DocFLow/`
+- `dist_release/DocFLow-linux-<arquitetura>-v<versao>.tar.gz`
 
 ### macOS
 
@@ -59,8 +59,8 @@ bash scripts/build_release.sh
 
 Saidas:
 
-- `dist/G-docs/`
-- `dist_release/G-docs-macos-<arquitetura>-v<versao>.tar.gz`
+- `dist/DocFLow/`
+- `dist_release/DocFLow-macos-<arquitetura>-v<versao>.tar.gz`
 
 ### Windows
 
@@ -70,9 +70,9 @@ scripts\build_release.bat
 
 Saidas:
 
-- `dist\G-docs\`
-- `dist_release\G-docs-win64-v<versao>.zip`
-- `dist_installer\G-docs-Setup-<versao>.exe` se o `Inno Setup` estiver disponivel no `PATH`
+- `dist\DocFLow\`
+- `dist_release\DocFLow-win64-v<versao>.zip`
+- `dist_installer\DocFLow-Setup-<versao>.exe` se o `Inno Setup` estiver disponivel no `PATH`
 
 ## 18.5 Validacoes executadas pelos scripts
 

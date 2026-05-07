@@ -131,6 +131,7 @@ class PendingReportService:
         worksheet.title = "Pendencias"
 
         headers = (
+            "Codigo da empresa",
             "Empresa",
             "Periodo",
             "Documento pendente",
@@ -145,6 +146,7 @@ class PendingReportService:
         for row in rows:
             worksheet.append(
                 (
+                    row["codigo_empresa"],
                     row["nome_empresa"],
                     row["periodo"],
                     row["nome_documento"],
@@ -155,10 +157,11 @@ class PendingReportService:
         worksheet.freeze_panes = "A2"
         worksheet.auto_filter.ref = worksheet.dimensions
         widths = {
-            "A": 36,
-            "B": 22,
-            "C": 38,
-            "D": 14,
+            "A": 18,
+            "B": 36,
+            "C": 22,
+            "D": 38,
+            "E": 14,
         }
         for column, width in widths.items():
             worksheet.column_dimensions[column].width = width

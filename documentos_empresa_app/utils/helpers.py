@@ -14,7 +14,7 @@ from documentos_empresa_app.utils.common import (
     CONFIG_DIR,
     CONFIG_FILE,
     DEFAULT_DB_NAME,
-    LEGACY_CONFIG_DIR,
+    LEGACY_CONFIG_DIRS,
     MONTH_NAMES,
     STATUS_COLORS,
     STATUS_OPTIONS,
@@ -39,21 +39,29 @@ def ensure_config_dir() -> None:
 
 
 def migrate_legacy_config_dir() -> None:
-    if CONFIG_DIR == LEGACY_CONFIG_DIR or CONFIG_DIR.exists() or not LEGACY_CONFIG_DIR.exists():
+    if CONFIG_DIR.exists():
         return
 
+    for legacy_config_dir in LEGACY_CONFIG_DIRS:
+        if CONFIG_DIR == legacy_config_dir or not legacy_config_dir.exists():
+            continue
+        _migrate_config_dir(legacy_config_dir)
+        return
+
+
+def _migrate_config_dir(legacy_config_dir: Path) -> None:
     CONFIG_DIR.parent.mkdir(parents=True, exist_ok=True)
     try:
-        shutil.move(str(LEGACY_CONFIG_DIR), str(CONFIG_DIR))
+        shutil.move(str(legacy_config_dir), str(CONFIG_DIR))
     except OSError:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        legacy_config_file = LEGACY_CONFIG_DIR / "config.json"
+        legacy_config_file = legacy_config_dir / "config.json"
         if legacy_config_file.exists() and not CONFIG_FILE.exists():
             shutil.copy2(legacy_config_file, CONFIG_FILE)
             _harden_config_file_permissions(CONFIG_FILE)
         return
 
-    _rewrite_migrated_config_paths(CONFIG_FILE, LEGACY_CONFIG_DIR, CONFIG_DIR)
+    _rewrite_migrated_config_paths(CONFIG_FILE, legacy_config_dir, CONFIG_DIR)
 
 
 def _rewrite_migrated_config_paths(config_file: Path, old_root: Path, new_root: Path) -> None:

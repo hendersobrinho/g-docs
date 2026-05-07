@@ -2,7 +2,7 @@
 
 # 17. Resumo Final
 
-O G-docs continua estruturado em camadas simples:
+O DocFLow continua estruturado em camadas simples:
 
 - `main.py` inicia o ciclo da aplicacao
 - `app_context.py` monta dependencias

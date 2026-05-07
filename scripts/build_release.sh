@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_TESTS="${RUN_TESTS:-1}"
-DIST_DIR="$ROOT_DIR/dist/G-docs"
+DIST_DIR="$ROOT_DIR/dist/DocFLow"
 DIST_RELEASE_DIR="$ROOT_DIR/dist_release"
 
 cd "$ROOT_DIR"
@@ -63,18 +63,18 @@ mkdir -p "$DIST_RELEASE_DIR"
 
 case "$(uname -s)" in
   Darwin)
-    RELEASE_ARCHIVE="$DIST_RELEASE_DIR/G-docs-macos-${ARCH_NAME}-v${APP_VERSION}.tar.gz"
+    RELEASE_ARCHIVE="$DIST_RELEASE_DIR/DocFLow-macos-${ARCH_NAME}-v${APP_VERSION}.tar.gz"
     ;;
   Linux)
-    RELEASE_ARCHIVE="$DIST_RELEASE_DIR/G-docs-linux-${ARCH_NAME}-v${APP_VERSION}.tar.gz"
+    RELEASE_ARCHIVE="$DIST_RELEASE_DIR/DocFLow-linux-${ARCH_NAME}-v${APP_VERSION}.tar.gz"
     ;;
   *)
-    RELEASE_ARCHIVE="$DIST_RELEASE_DIR/G-docs-v${APP_VERSION}.tar.gz"
+    RELEASE_ARCHIVE="$DIST_RELEASE_DIR/DocFLow-v${APP_VERSION}.tar.gz"
     ;;
 esac
 
 rm -f "$RELEASE_ARCHIVE"
-tar -czf "$RELEASE_ARCHIVE" -C "$ROOT_DIR/dist" "G-docs"
+tar -czf "$RELEASE_ARCHIVE" -C "$ROOT_DIR/dist" "DocFLow"
 
 echo
 echo "Build concluido em: $DIST_DIR"

@@ -82,7 +82,7 @@ Leia:
 6. `utils/resources.py`
 7. `documentos_empresa_app.spec`
 8. `scripts/build_release.*`
-9. `installer/G-docs.iss`
+9. `assets/installer/DocFLow.iss`
 
 ### Etapa 7: validar entendimento pelos testes
 

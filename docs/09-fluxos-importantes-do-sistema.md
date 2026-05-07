@@ -105,9 +105,11 @@
 ## 9.10 Backup e restauracao
 
 1. O usuario usa o menu `Banco` na `MainWindow`.
-2. `DatabaseMaintenanceService.create_backup()` gera uma copia do banco atual.
-3. `restore_backup()` substitui o banco em uso pelo arquivo selecionado.
-4. A aplicacao reinicia apos restauracao para recarregar o estado.
+2. `DatabaseMaintenanceService.create_backup()` gera uma copia manual do banco atual.
+3. O backup automatico usa a configuracao local para gerar uma copia datada quando o intervalo vencer.
+4. Backups automaticos antigos sao removidos conforme o limite configurado.
+5. `restore_backup()` substitui o banco em uso pelo arquivo selecionado.
+6. A aplicacao reinicia apos restauracao para recarregar o estado.
 
 ## 9.11 Logs
 

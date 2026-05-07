@@ -6,7 +6,7 @@ import sys
 ROOT_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
 ICONS_DIR = ROOT_DIR / "assets" / "icons"
 BUILD_PLATFORM = sys.platform
-APP_NAME = "G-docs"
+APP_NAME = "DocFLow"
 
 
 def get_build_icon_path() -> Path | None:

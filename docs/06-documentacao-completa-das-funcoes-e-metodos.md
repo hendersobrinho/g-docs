@@ -259,6 +259,11 @@
 
 - Papel: migrar configuracao antiga do diretorio legado para o novo padrao
 
+### `load_auto_backup_settings()`, `save_auto_backup_settings()` e `should_run_auto_backup()`
+
+- Arquivo: `utils/auto_backup.py`
+- Papel: carregar configuracao local do backup automatico, normalizar intervalo/retencao e decidir se ja esta na hora de gerar uma nova copia
+
 ### `apply_window_icon(window)`
 
 - Arquivo: `utils/resources.py`

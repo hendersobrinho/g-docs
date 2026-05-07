@@ -27,6 +27,7 @@ from documentos_empresa_app.services.documento_service import DocumentoService
 from documentos_empresa_app.services.empresa_service import EmpresaService
 from documentos_empresa_app.services.import_service import ImportService
 from documentos_empresa_app.services.log_service import LogService
+from documentos_empresa_app.services.panorama_service import PanoramaService
 from documentos_empresa_app.services.pending_report_service import PendingReportService
 from documentos_empresa_app.services.periodo_service import PeriodoService
 from documentos_empresa_app.services.session_service import SessionService
@@ -93,6 +94,12 @@ class ApplicationServiceTests(unittest.TestCase):
             self.periodo_repository,
             self.status_repository,
         )
+        self.panorama_service = PanoramaService(
+            self.empresa_repository,
+            self.documento_repository,
+            self.periodo_repository,
+            self.status_repository,
+        )
         self.status_service = StatusService(
             self.empresa_repository,
             self.documento_repository,
@@ -123,6 +130,17 @@ class ApplicationServiceTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def _periodo(self, ano: int, mes: int) -> dict:
+        return next(
+            item
+            for item in self.periodo_service.list_periodos()
+            if item["ano"] == ano and item["mes"] == mes
+        )
+
+    def _panorama_row(self, empresa_id: int, periodo_id: int) -> dict:
+        view = self.panorama_service.build_monthly_view(periodo_id)
+        return next(row for row in view["rows"] if row["empresa_id"] == empresa_id)
 
     def test_initial_types_are_seeded(self) -> None:
         tipos = [item["nome_tipo"] for item in self.tipo_service.list_tipos()]
@@ -194,7 +212,12 @@ class ApplicationServiceTests(unittest.TestCase):
     def test_status_view_includes_last_change_metadata(self) -> None:
         empresa_id = self.empresa_service.create_empresa(112, "Empresa Status")
         tipo_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
-        documento_id = self.documento_service.create_documento(empresa_id, tipo_id, "Banco Auditoria")
+        documento_id = self.documento_service.create_documento(
+            empresa_id,
+            tipo_id,
+            "Banco Auditoria",
+            ["Email", "WhatsApp"],
+        )
         self.periodo_service.generate_year(2026)
 
         periodos = self.periodo_service.list_periodos()
@@ -204,7 +227,9 @@ class ApplicationServiceTests(unittest.TestCase):
 
         view = self.status_service.build_control_view(empresa_id, jan["id"], jan["id"])
         cell = view["groups"][0]["documentos"][0]["cells"][0]
+        documento = view["groups"][0]["documentos"][0]
 
+        self.assertEqual(documento["meios_recebimento"], "Email, WhatsApp")
         self.assertEqual(cell["status"], "Recebido")
         self.assertEqual(cell["updated_by_username"], "admin")
         self.assertTrue(cell["updated_at"])
@@ -272,15 +297,17 @@ class ApplicationServiceTests(unittest.TestCase):
 
         self.assertEqual(result["rows"], 1)
         self.assertEqual(worksheet.max_row, 2)
-        self.assertEqual(worksheet.max_column, 4)
-        self.assertEqual(worksheet["A1"].value, "Empresa")
-        self.assertEqual(worksheet["B1"].value, "Periodo")
-        self.assertEqual(worksheet["C1"].value, "Documento pendente")
-        self.assertEqual(worksheet["D1"].value, "Status")
-        self.assertEqual(worksheet["A2"].value, "Empresa Excel")
-        self.assertEqual(worksheet["B2"].value, "03/2026 - Marco")
-        self.assertEqual(worksheet["C2"].value, "Contrato Social")
-        self.assertEqual(worksheet["D2"].value, "Pendente")
+        self.assertEqual(worksheet.max_column, 5)
+        self.assertEqual(worksheet["A1"].value, "Codigo da empresa")
+        self.assertEqual(worksheet["B1"].value, "Empresa")
+        self.assertEqual(worksheet["C1"].value, "Periodo")
+        self.assertEqual(worksheet["D1"].value, "Documento pendente")
+        self.assertEqual(worksheet["E1"].value, "Status")
+        self.assertEqual(worksheet["A2"].value, 111)
+        self.assertEqual(worksheet["B2"].value, "Empresa Excel")
+        self.assertEqual(worksheet["C2"].value, "03/2026 - Marco")
+        self.assertEqual(worksheet["D2"].value, "Contrato Social")
+        self.assertEqual(worksheet["E2"].value, "Pendente")
 
     def test_backup_restore_recovers_previous_database_state(self) -> None:
         self.empresa_service.create_empresa(113, "Empresa Antes do Backup")
@@ -295,6 +322,41 @@ class ApplicationServiceTests(unittest.TestCase):
 
         self.assertIn(113, codigos)
         self.assertNotIn(114, codigos)
+
+    def test_timestamped_backup_uses_configured_directory(self) -> None:
+        self.empresa_service.create_empresa(115, "Empresa Backup Automatico")
+        backup_dir = Path(self.temp_dir.name) / "backups"
+        backup_time = datetime(2026, 5, 6, 21, 30, 0)
+
+        result = self.database_maintenance_service.create_timestamped_backup(
+            backup_dir,
+            when=backup_time,
+            keep_last=10,
+        )
+
+        backup_path = Path(result["path"])
+        self.assertEqual(backup_path.parent, backup_dir)
+        self.assertEqual(backup_path.name, "test_app_auto_backup_20260506_213000.db")
+        self.assertTrue(backup_path.exists())
+        self.assertGreater(result["size_bytes"], 0)
+
+    def test_timestamped_backup_prunes_old_files(self) -> None:
+        backup_dir = Path(self.temp_dir.name) / "backups"
+        backup_dir.mkdir()
+        old_files = [
+            backup_dir / "test_app_auto_backup_20260501_080000.db",
+            backup_dir / "test_app_auto_backup_20260502_080000.db",
+            backup_dir / "test_app_auto_backup_20260503_080000.db",
+        ]
+        for file_path in old_files:
+            file_path.write_text("backup", encoding="utf-8")
+
+        removed = self.database_maintenance_service.prune_timestamped_backups(backup_dir, keep_last=2)
+
+        self.assertEqual(removed, [str(old_files[0])])
+        self.assertFalse(old_files[0].exists())
+        self.assertTrue(old_files[1].exists())
+        self.assertTrue(old_files[2].exists())
 
     def test_database_manager_applies_sqlite_pragmas(self) -> None:
         with self.empresa_repository.db_manager.connect() as connection:
@@ -649,6 +711,149 @@ class ApplicationServiceTests(unittest.TestCase):
         self.assertEqual(
             [(row["nome_documento"], row["mes"]) for row in report["rows"]],
             [("Declaracao anual", 1)],
+        )
+
+    def test_panorama_marks_company_without_chargeable_documents(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(130, "Empresa Sem Cobranca")
+        tipo_id = self.tipo_service.create_tipo("Declaracao janeiro", TYPE_OCCURRENCE_ANUAL_JANEIRO)
+        self.documento_service.create_documento(empresa_id, tipo_id, "Declaracao anual")
+        self.periodo_service.generate_year(2026)
+        fevereiro = self._periodo(2026, 2)
+
+        row = self._panorama_row(empresa_id, fevereiro["id"])
+
+        self.assertEqual(row["situacao"], "Sem cobranca")
+        self.assertEqual(row["total_cobravel"], 0)
+
+    def test_panorama_marks_company_without_documents(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(138, "Empresa Sem Documentos")
+        self.periodo_service.generate_year(2026)
+        janeiro = self._periodo(2026, 1)
+
+        row = self._panorama_row(empresa_id, janeiro["id"])
+
+        self.assertEqual(row["situacao"], "Sem documentos")
+        self.assertEqual(row["total_documentos"], 0)
+        self.assertEqual(row["total_cobravel"], 0)
+
+    def test_panorama_marks_company_not_started(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(131, "Empresa Nao Iniciada")
+        tipo_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
+        self.documento_service.create_documento(empresa_id, tipo_id, "Banco A")
+        self.periodo_service.generate_year(2026)
+        janeiro = self._periodo(2026, 1)
+
+        row = self._panorama_row(empresa_id, janeiro["id"])
+
+        self.assertEqual(row["situacao"], "Nao iniciada")
+        self.assertEqual(row["total_cobravel"], 1)
+        self.assertEqual(row["marcados"], 0)
+        self.assertEqual(row["faltando"], 1)
+
+    def test_panorama_marks_company_in_progress(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(132, "Empresa Em Andamento")
+        tipo_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
+        documento_a_id = self.documento_service.create_documento(empresa_id, tipo_id, "Banco A")
+        self.documento_service.create_documento(empresa_id, tipo_id, "Banco B")
+        self.periodo_service.generate_year(2026)
+        janeiro = self._periodo(2026, 1)
+
+        self.status_service.update_status(documento_a_id, janeiro["id"], "Recebido")
+        row = self._panorama_row(empresa_id, janeiro["id"])
+
+        self.assertEqual(row["situacao"], "Em andamento")
+        self.assertEqual(row["marcados"], 1)
+        self.assertEqual(row["recebidos"], 1)
+        self.assertEqual(row["faltando"], 1)
+
+    def test_panorama_marks_company_with_pending_status(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(133, "Empresa Com Pendencia")
+        tipo_id = self.tipo_service.get_or_create_tipo("Contratos")["id"]
+        documento_id = self.documento_service.create_documento(empresa_id, tipo_id, "Contrato Social")
+        self.periodo_service.generate_year(2026)
+        janeiro = self._periodo(2026, 1)
+
+        self.status_service.update_status(documento_id, janeiro["id"], "Pendente")
+        row = self._panorama_row(empresa_id, janeiro["id"])
+
+        self.assertEqual(row["situacao"], "Com pendencia")
+        self.assertEqual(row["pendentes"], 1)
+        self.assertEqual(row["faltando"], 0)
+
+    def test_panorama_marks_company_completed(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(134, "Empresa Concluida")
+        tipo_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
+        documento_a_id = self.documento_service.create_documento(empresa_id, tipo_id, "Banco A")
+        documento_b_id = self.documento_service.create_documento(empresa_id, tipo_id, "Banco B")
+        self.periodo_service.generate_year(2026)
+        janeiro = self._periodo(2026, 1)
+
+        self.status_service.update_status(documento_a_id, janeiro["id"], "Recebido")
+        self.status_service.update_status(documento_b_id, janeiro["id"], "Encerrado")
+        row = self._panorama_row(empresa_id, janeiro["id"])
+
+        self.assertEqual(row["situacao"], "Concluida")
+        self.assertEqual(row["recebidos"], 1)
+        self.assertEqual(row["encerrados"], 1)
+        self.assertEqual(row["marcados"], 2)
+        self.assertEqual(row["faltando"], 0)
+        self.assertTrue(row["ultima_marcacao_em"])
+        self.assertEqual(row["ultima_marcacao_por"], "admin")
+
+    def test_panorama_respects_quarterly_and_annual_rules(self) -> None:
+        empresa_trimestral_id = self.empresa_service.create_empresa(135, "Empresa Trimestral Panorama")
+        tipo_trimestral_id = self.tipo_service.create_tipo("Balanco trimestral", TYPE_OCCURRENCE_TRIMESTRAL)
+        self.documento_service.create_documento(empresa_trimestral_id, tipo_trimestral_id, "Balanco")
+        empresa_anual_id = self.empresa_service.create_empresa(136, "Empresa Anual Panorama")
+        tipo_anual_id = self.tipo_service.create_tipo("Certidao janeiro", TYPE_OCCURRENCE_ANUAL_JANEIRO)
+        self.documento_service.create_documento(empresa_anual_id, tipo_anual_id, "Certidao")
+        self.periodo_service.generate_year(2026)
+        fevereiro = self._periodo(2026, 2)
+        abril = self._periodo(2026, 4)
+
+        row_trimestral_fevereiro = self._panorama_row(empresa_trimestral_id, fevereiro["id"])
+        row_trimestral_abril = self._panorama_row(empresa_trimestral_id, abril["id"])
+        row_anual_fevereiro = self._panorama_row(empresa_anual_id, fevereiro["id"])
+
+        self.assertEqual(row_trimestral_fevereiro["situacao"], "Sem cobranca")
+        self.assertEqual(row_trimestral_abril["situacao"], "Nao iniciada")
+        self.assertEqual(row_anual_fevereiro["situacao"], "Sem cobranca")
+
+    def test_panorama_ignores_document_closed_in_previous_month(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(137, "Empresa Encerrada Panorama")
+        tipo_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
+        documento_id = self.documento_service.create_documento(empresa_id, tipo_id, "Banco Encerrado")
+        self.periodo_service.generate_year(2026)
+        janeiro = self._periodo(2026, 1)
+        fevereiro = self._periodo(2026, 2)
+
+        self.status_service.update_status(documento_id, janeiro["id"], "Encerrado")
+        row = self._panorama_row(empresa_id, fevereiro["id"])
+
+        self.assertEqual(row["situacao"], "Sem cobranca")
+        self.assertEqual(row["total_cobravel"], 0)
+
+    def test_panorama_orders_rows_by_operational_priority(self) -> None:
+        tipo_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
+        concluida_id = self.empresa_service.create_empresa(140, "Empresa Concluida Prioridade")
+        nao_iniciada_id = self.empresa_service.create_empresa(141, "Empresa Nao Iniciada Prioridade")
+        pendente_id = self.empresa_service.create_empresa(142, "Empresa Pendente Prioridade")
+        sem_documentos_id = self.empresa_service.create_empresa(143, "Empresa Sem Documento Prioridade")
+
+        doc_concluido_id = self.documento_service.create_documento(concluida_id, tipo_id, "Banco Concluido")
+        self.documento_service.create_documento(nao_iniciada_id, tipo_id, "Banco Nao Iniciado")
+        doc_pendente_id = self.documento_service.create_documento(pendente_id, tipo_id, "Banco Pendente")
+        self.periodo_service.generate_year(2026)
+        janeiro = self._periodo(2026, 1)
+
+        self.status_service.update_status(doc_concluido_id, janeiro["id"], "Recebido")
+        self.status_service.update_status(doc_pendente_id, janeiro["id"], "Pendente")
+
+        view = self.panorama_service.build_monthly_view(janeiro["id"])
+
+        self.assertEqual(
+            [row["empresa_id"] for row in view["rows"]],
+            [pendente_id, nao_iniciada_id, sem_documentos_id, concluida_id],
         )
 
     def test_renaming_delivery_method_updates_documents_using_it(self) -> None:

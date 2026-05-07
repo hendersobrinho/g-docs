@@ -1,7 +1,7 @@
-#define AppName "G-docs"
-#define AppVersion "1.2.0"
+#define AppName "DocFLow"
+#define AppVersion "1.3.0"
 #define AppPublisher "hndlab.dev.br"
-#define AppExeName "G-docs.exe"
+#define AppExeName "DocFLow.exe"
 
 [Setup]
 AppId={{9B741DAB-4A2E-438B-85E7-58C63D4A3527}
@@ -11,12 +11,12 @@ AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
-OutputDir=..\dist_installer
-OutputBaseFilename=G-docs-Setup-{#AppVersion}
+OutputDir=..\..\dist_installer
+OutputBaseFilename=DocFLow-Setup-{#AppVersion}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
-SetupIconFile=..\assets\icons\icon.ico
+SetupIconFile=..\icons\icon.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 ArchitecturesInstallIn64BitMode=x64compatible
 VersionInfoVersion={#AppVersion}
@@ -28,7 +28,7 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 Name: "desktopicon"; Description: "Criar atalho na area de trabalho"; GroupDescription: "Atalhos:"; Flags: unchecked
 
 [Files]
-Source: "..\dist\G-docs\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\dist\DocFLow\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"

@@ -6,15 +6,24 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from documentos_empresa_app.app_context import ApplicationServices
+from documentos_empresa_app.ui.about_dialog import AboutDialog
+from documentos_empresa_app.ui.backup_settings_dialog import BackupSettingsDialog
 from documentos_empresa_app.ui.controle_tab import ControleTab
 from documentos_empresa_app.ui.documento_tab import DocumentoTab
 from documentos_empresa_app.ui.empresa_tab import EmpresaTab
 from documentos_empresa_app.ui.log_tab import LogTab
+from documentos_empresa_app.ui.panorama_tab import PanoramaTab
 from documentos_empresa_app.ui.periodo_tab import PeriodoTab
 from documentos_empresa_app.ui.user_tab import UserTab
+from documentos_empresa_app.utils.auto_backup import (
+    load_auto_backup_settings,
+    mark_auto_backup_created,
+    save_auto_backup_settings,
+    should_run_auto_backup,
+)
 from documentos_empresa_app.utils.common import ValidationError
 from documentos_empresa_app.utils.display import get_preferred_screen_bounds
-from documentos_empresa_app.utils.helpers import APP_NAME, save_login_preferences
+from documentos_empresa_app.utils.helpers import APP_NAME, open_directory_in_file_manager, save_login_preferences
 from documentos_empresa_app.utils.resources import apply_window_icon
 
 
@@ -31,6 +40,7 @@ class MainWindow(tk.Tk):
         self._configure_window_geometry()
         self._configure_icon()
         self._build_layout()
+        self.after(800, self.run_auto_backup_if_due)
 
     def _configure_style(self) -> None:
         style = ttk.Style(self)
@@ -83,9 +93,18 @@ class MainWindow(tk.Tk):
         header_right.pack(side="right")
 
         ttk.Button(header_right, text="Logout", command=self.logout).pack(side="right")
+        self.help_menu_button = ttk.Menubutton(header_right, text="Ajuda")
+        self.help_menu = tk.Menu(self.help_menu_button, tearoff=False)
+        self.help_menu.add_command(label="Sobre...", command=self.show_about)
+        self.help_menu_button["menu"] = self.help_menu
+        self.help_menu_button.pack(side="right", padx=(0, 8))
+
         self.database_menu_button = ttk.Menubutton(header_right, text="Banco")
         self.database_menu = tk.Menu(self.database_menu_button, tearoff=False)
         self.database_menu.add_command(label="Fazer backup...", command=self.backup_database)
+        self.database_menu.add_command(label="Configurar backup automatico...", command=self.configure_auto_backup)
+        self.database_menu.add_command(label="Abrir pasta de backup automatico", command=self.open_auto_backup_directory)
+        self.database_menu.add_separator()
         self.database_menu.add_command(label="Restaurar backup...", command=self.restore_database)
         if not self.services.session_service.is_admin():
             self.database_menu.entryconfigure("Restaurar backup...", state="disabled")
@@ -98,14 +117,24 @@ class MainWindow(tk.Tk):
         self.notebook = ttk.Notebook(container)
         self.notebook.pack(fill="both", expand=True)
 
+        self.controle_tab = ControleTab(self.notebook, self.services, self.refresh_all_tabs)
+        self.panorama_tab = PanoramaTab(
+            self.notebook,
+            self.services,
+            self.refresh_all_tabs,
+            on_open_control=self.open_control_for_company_period,
+        )
+
         self.tabs = [
-            ControleTab(self.notebook, self.services, self.refresh_all_tabs),
+            self.panorama_tab,
+            self.controle_tab,
             EmpresaTab(self.notebook, self.services, self.refresh_all_tabs),
             DocumentoTab(self.notebook, self.services, self.refresh_all_tabs),
             PeriodoTab(self.notebook, self.services, self.refresh_all_tabs),
         ]
 
         tab_titles = [
+            "Panorama",
             "Controle",
             "Empresas",
             "Documentos",
@@ -125,6 +154,10 @@ class MainWindow(tk.Tk):
             self.notebook.add(tab, text=title)
 
         self.refresh_all_tabs()
+
+    def open_control_for_company_period(self, company_id: int, period_id: int) -> None:
+        if self.controle_tab.open_company_period(company_id, period_id):
+            self.notebook.select(self.controle_tab)
 
     def refresh_all_tabs(self) -> None:
         self._refresh_user_info()
@@ -155,6 +188,9 @@ class MainWindow(tk.Tk):
         self.logout_requested = True
         self.services.session_service.logout()
         self.destroy()
+
+    def show_about(self) -> None:
+        AboutDialog(self)
 
     def backup_database(self) -> None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -187,6 +223,47 @@ class MainWindow(tk.Tk):
             ),
             parent=self,
         )
+
+    def configure_auto_backup(self) -> None:
+        dialog = BackupSettingsDialog(self, load_auto_backup_settings())
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return
+
+        settings = save_auto_backup_settings(dialog.result)
+        state_label = "ativado" if settings["enabled"] else "desativado"
+        messagebox.showinfo(
+            APP_NAME,
+            f"Backup automatico {state_label}.",
+            parent=self,
+        )
+
+    def open_auto_backup_directory(self) -> None:
+        settings = load_auto_backup_settings()
+        backup_dir = Path(settings["directory"]).expanduser()
+        try:
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            open_directory_in_file_manager(backup_dir)
+        except (OSError, ValidationError) as exc:
+            messagebox.showerror(APP_NAME, str(exc), parent=self)
+
+    def run_auto_backup_if_due(self) -> None:
+        settings = load_auto_backup_settings()
+        if not should_run_auto_backup(settings):
+            return
+
+        try:
+            result = self.services.database_maintenance_service.create_timestamped_backup(
+                settings["directory"],
+                keep_last=settings["keep_last"],
+            )
+            mark_auto_backup_created(result)
+        except ValidationError as exc:
+            messagebox.showwarning(
+                APP_NAME,
+                f"Nao foi possivel gerar o backup automatico.\n\n{exc}",
+                parent=self,
+            )
 
     def restore_database(self) -> None:
         file_path = filedialog.askopenfilename(
