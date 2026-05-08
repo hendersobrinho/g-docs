@@ -6,6 +6,7 @@ from tkinter import messagebox, ttk
 from documentos_empresa_app.ui.document_name_field import DocumentNameManagerDialog
 from documentos_empresa_app.ui.document_type_manager_dialog import DocumentTypeManagerDialog
 from documentos_empresa_app.ui.delivery_methods_field import DeliveryMethodsField
+from documentos_empresa_app.ui.status_icons import set_button_icon
 from documentos_empresa_app.utils.helpers import CompanySelector, ValidationError
 
 
@@ -55,7 +56,7 @@ class DocumentoTab(ttk.Frame):
         self.nome_combo.grid(row=0, column=0, sticky="ew", padx=(0, 6))
         self.nome_combo.bind("<KeyRelease>", self._on_document_name_typed)
         self.nome_combo.bind("<<ComboboxSelected>>", lambda _event: self._refresh_document_name_suggestions())
-        self.document_name_button = ttk.Button(name_input, text="...", width=3, command=self.open_document_name_manager)
+        self.document_name_button = ttk.Button(name_input, text="...", width=3, command=self.open_document_name_manager, style="Toolbar.TButton")
         self.document_name_button.grid(
             row=0, column=1, sticky="ew"
         )
@@ -68,7 +69,7 @@ class DocumentoTab(ttk.Frame):
         self.tipo_combo = ttk.Combobox(type_input, textvariable=self.tipo_var, state="readonly")
         self.tipo_combo.grid(row=0, column=0, sticky="ew", padx=(0, 6))
         self.tipo_combo.bind("<<ComboboxSelected>>", self._on_document_type_changed)
-        self.type_manager_button = ttk.Button(type_input, text="...", width=3, command=self.open_type_manager)
+        self.type_manager_button = ttk.Button(type_input, text="...", width=3, command=self.open_type_manager, style="Toolbar.TButton")
         self.type_manager_button.grid(row=0, column=1, sticky="ew")
 
         self.delivery_field = DeliveryMethodsField(
@@ -86,13 +87,14 @@ class DocumentoTab(ttk.Frame):
         action_row.columnconfigure(2, weight=1)
         action_row.columnconfigure(3, weight=1)
 
-        self.new_button = ttk.Button(action_row, text="Novo", command=self.start_new_document)
+        self.new_button = ttk.Button(action_row, text="Novo", command=self.start_new_document, style="Secondary.TButton")
         self.new_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self.edit_button = ttk.Button(action_row, text="Editar", command=self.start_edit_document)
+        self.edit_button = ttk.Button(action_row, text="Editar", command=self.start_edit_document, style="Secondary.TButton")
         self.edit_button.grid(row=0, column=1, sticky="ew", padx=(0, 8))
-        self.save_button = ttk.Button(action_row, text="Salvar", command=self.save_document)
+        self.save_button = ttk.Button(action_row, text="Salvar", command=self.save_document, style="Primary.TButton")
         self.save_button.grid(row=0, column=2, sticky="ew", padx=(0, 8))
-        self.cancel_button = ttk.Button(action_row, text="Cancelar", command=self.cancel_document_edit)
+        set_button_icon(self.save_button)
+        self.cancel_button = ttk.Button(action_row, text="Cancelar", command=self.cancel_document_edit, style="Quiet.TButton")
         self.cancel_button.grid(row=0, column=3, sticky="ew")
 
         form.columnconfigure(0, weight=1)
@@ -124,7 +126,7 @@ class DocumentoTab(ttk.Frame):
 
         document_actions = ttk.Frame(list_frame)
         document_actions.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-        self.delete_documents_button = ttk.Button(document_actions, text="Excluir selecionados", command=self.delete_selected_documents)
+        self.delete_documents_button = ttk.Button(document_actions, text="Excluir selecionados", command=self.delete_selected_documents, style="Danger.TButton")
         self.delete_documents_button.pack(
             side="left"
         )
@@ -397,7 +399,7 @@ class DocumentoTab(ttk.Frame):
         editable = mode in {"new", "edit"} and bool(self.current_company_id)
 
         self.nome_combo.configure(state="normal" if editable else "disabled")
-        self.document_name_button.configure(state="normal" if editable else "disabled")
+        self.document_name_button.configure(state="normal")
         self.tipo_combo.configure(state="readonly" if editable else "disabled")
         self.type_manager_button.configure(state="normal")
         self.delivery_field.set_editable(editable)

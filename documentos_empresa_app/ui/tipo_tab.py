@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from documentos_empresa_app.ui.status_icons import set_button_icon
 from documentos_empresa_app.utils.common import TYPE_OCCURRENCE_CHOICES, TYPE_OCCURRENCE_MENSAL
 from documentos_empresa_app.utils.helpers import ValidationError
 
@@ -35,10 +36,11 @@ class TipoTab(ttk.Frame):
             width=26,
         )
         self.ocorrencia_combo.grid(row=1, column=1, sticky="ew", padx=(0, 10))
-        self.save_button = ttk.Button(form, text="Cadastrar tipo", command=self.save_tipo)
+        self.save_button = ttk.Button(form, text="Cadastrar tipo", command=self.save_tipo, style="Primary.TButton")
         self.save_button.grid(row=1, column=2, sticky="ew", padx=(0, 8))
-        ttk.Button(form, text="Limpar", command=self.clear_form).grid(row=1, column=3, sticky="ew", padx=(0, 8))
-        ttk.Button(form, text="Excluir selecionado", command=self.delete_tipo).grid(row=1, column=4, sticky="ew")
+        set_button_icon(self.save_button)
+        ttk.Button(form, text="Limpar", command=self.clear_form, style="Quiet.TButton").grid(row=1, column=3, sticky="ew", padx=(0, 8))
+        ttk.Button(form, text="Excluir selecionado", command=self.delete_tipo, style="Danger.TButton").grid(row=1, column=4, sticky="ew")
         ttk.Label(
             form,
             text="Mensal: todos os meses. Trimestral: libera 01, 04, 07 e 10. Anual em janeiro: libera apenas janeiro.",

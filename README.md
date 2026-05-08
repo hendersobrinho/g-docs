@@ -6,7 +6,9 @@
 
 Sistema desktop local para controle de recebimento de documentos empresariais.
 
-Versao atual: `1.3.0`
+Versao atual: `1.4.0`
+
+Este repositorio publico foi preparado para portfolio tecnico. O codigo-fonte, a interface e o fluxo principal estao aqui para estudo e demonstracao, mas materiais operacionais privados de licenciamento e distribuicao comercial nao acompanham esta edicao.
 
 O projeto foi pensado para substituir planilhas e controles manuais por um fluxo local, auditavel e simples de operar. O foco e manter o uso direto no escritorio: cadastro de empresas, documentos por tipo, controle mensal de recebimento, relatorio de pendencias e backup do banco sem depender de servidor.
 
@@ -95,27 +97,15 @@ python -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe main.py
 ```
 
-## Gerar licenca piloto
+## Licenciamento na edicao publica
 
-O gerador cria uma licenca local vitalicia para ativacao do app em ambiente interno/piloto.
+O fluxo de licenciamento operacional nao faz parte desta publicacao no GitHub.
 
-### Linux / macOS
+Na pratica, isso significa:
 
-```bash
-.venv/bin/python scripts/generate_license.py --customer "Cliente Piloto" --email "cliente@empresa.com"
-```
-
-### Windows PowerShell
-
-```powershell
-.\.venv\Scripts\python.exe scripts\generate_license.py --customer "Cliente Piloto" --email "cliente@empresa.com"
-```
-
-Saida esperada:
-
-- arquivo de licenca: `dist_license/license.json`
-
-Esse arquivo gerado e destinado ao cliente/ativacao local e nao deve ser versionado no Git.
+- a chave privada de licenciamento nao esta versionada aqui
+- a geracao operacional de licencas depende de material privado fora deste repositorio
+- esta edicao publica deve ser tratada como vitrine tecnica do projeto, nao como pacote pronto para uso em producao
 
 ## Primeiro acesso
 

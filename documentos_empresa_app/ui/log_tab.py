@@ -37,8 +37,8 @@ class LogTab(ttk.Frame):
 
         action_frame = ttk.Frame(filter_frame)
         action_frame.grid(row=1, column=3, columnspan=2, sticky="w")
-        ttk.Button(action_frame, text="Aplicar filtros", command=self.refresh_data).pack(side="left")
-        ttk.Button(action_frame, text="Limpar filtros", command=self.clear_filters).pack(side="left", padx=(6, 0))
+        ttk.Button(action_frame, text="Aplicar filtros", command=self.refresh_data, style="Primary.TButton").pack(side="left")
+        ttk.Button(action_frame, text="Limpar filtros", command=self.clear_filters, style="Quiet.TButton").pack(side="left", padx=(6, 0))
 
         filter_frame.columnconfigure(0, weight=1)
 

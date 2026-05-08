@@ -50,7 +50,8 @@ class EmpresaRepository(BaseRepository):
     def list_all(self, active_only: bool = False) -> list[dict]:
         query = """
             SELECT id, codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato,
-                   observacao, diretorio_documentos, ativa
+                   observacao, diretorio_documentos, ativa, cobranca_inicio_dia, cobranca_fim_dia,
+                   cobranca_alerta_dias
             FROM empresas
         """
         params: tuple = ()
@@ -63,7 +64,8 @@ class EmpresaRepository(BaseRepository):
         return self._fetchone(
             """
             SELECT id, codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato,
-                   observacao, diretorio_documentos, ativa
+                   observacao, diretorio_documentos, ativa, cobranca_inicio_dia, cobranca_fim_dia,
+                   cobranca_alerta_dias
             FROM empresas
             WHERE id = ?
             """,
@@ -73,7 +75,8 @@ class EmpresaRepository(BaseRepository):
     def get_by_code(self, codigo_empresa: int, active_only: bool = False) -> dict | None:
         query = """
             SELECT id, codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato,
-                   observacao, diretorio_documentos, ativa
+                   observacao, diretorio_documentos, ativa, cobranca_inicio_dia, cobranca_fim_dia,
+                   cobranca_alerta_dias
             FROM empresas
             WHERE codigo_empresa = ?
         """
@@ -93,7 +96,8 @@ class EmpresaRepository(BaseRepository):
                 self._fetchall(
                     f"""
                     SELECT id, codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato,
-                           observacao, diretorio_documentos, ativa
+                           observacao, diretorio_documentos, ativa, cobranca_inicio_dia, cobranca_fim_dia,
+                           cobranca_alerta_dias
                     FROM empresas
                     WHERE id IN ({placeholders})
                     """,
@@ -111,13 +115,36 @@ class EmpresaRepository(BaseRepository):
         email_contato: str | None = None,
         nome_contato: str | None = None,
         observacao: str | None = None,
+        cobranca_inicio_dia: int | None = None,
+        cobranca_fim_dia: int | None = None,
+        cobranca_alerta_dias: int | None = None,
     ) -> int:
         return self._execute(
             """
-            INSERT INTO empresas (codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato, observacao)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO empresas (
+                codigo_empresa,
+                nome_empresa,
+                meios_recebimento,
+                email_contato,
+                nome_contato,
+                observacao,
+                cobranca_inicio_dia,
+                cobranca_fim_dia,
+                cobranca_alerta_dias
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (codigo_empresa, nome_empresa, meios_recebimento, email_contato, nome_contato, observacao),
+            (
+                codigo_empresa,
+                nome_empresa,
+                meios_recebimento,
+                email_contato,
+                nome_contato,
+                observacao,
+                cobranca_inicio_dia,
+                cobranca_fim_dia,
+                cobranca_alerta_dias,
+            ),
         )
 
     def update_name(self, empresa_id: int, nome_empresa: str) -> None:
@@ -131,20 +158,50 @@ class EmpresaRepository(BaseRepository):
         email_contato: str | None,
         nome_contato: str | None,
         observacao: str | None,
+        cobranca_inicio_dia: int | None,
+        cobranca_fim_dia: int | None,
+        cobranca_alerta_dias: int | None,
     ) -> None:
         self._execute(
             """
             UPDATE empresas
-            SET nome_empresa = ?, meios_recebimento = ?, email_contato = ?, nome_contato = ?, observacao = ?
+            SET nome_empresa = ?, meios_recebimento = ?, email_contato = ?, nome_contato = ?, observacao = ?,
+                cobranca_inicio_dia = ?, cobranca_fim_dia = ?, cobranca_alerta_dias = ?
             WHERE id = ?
             """,
-            (nome_empresa, meios_recebimento, email_contato, nome_contato, observacao, empresa_id),
+            (
+                nome_empresa,
+                meios_recebimento,
+                email_contato,
+                nome_contato,
+                observacao,
+                cobranca_inicio_dia,
+                cobranca_fim_dia,
+                cobranca_alerta_dias,
+                empresa_id,
+            ),
         )
 
     def update_directory(self, empresa_id: int, diretorio_documentos: str | None) -> None:
         self._execute(
             "UPDATE empresas SET diretorio_documentos = ? WHERE id = ?",
             (diretorio_documentos, empresa_id),
+        )
+
+    def update_collection_settings(
+        self,
+        empresa_id: int,
+        cobranca_inicio_dia: int | None,
+        cobranca_fim_dia: int | None,
+        cobranca_alerta_dias: int | None,
+    ) -> None:
+        self._execute(
+            """
+            UPDATE empresas
+            SET cobranca_inicio_dia = ?, cobranca_fim_dia = ?, cobranca_alerta_dias = ?
+            WHERE id = ?
+            """,
+            (cobranca_inicio_dia, cobranca_fim_dia, cobranca_alerta_dias, empresa_id),
         )
 
     def update_active(self, empresa_id: int, ativa: int) -> None:
@@ -184,6 +241,50 @@ class DeliveryMethodRepository(BaseRepository):
 
     def delete(self, method_id: int) -> None:
         self._execute("DELETE FROM meios_recebimento_sistema WHERE id = ?", (method_id,))
+
+
+class CollectionConfigRepository(BaseRepository):
+    def get_settings(self) -> dict:
+        row = self._fetchone(
+            """
+            SELECT
+                id,
+                inicio_cobranca_dia,
+                encerramento_cobranca_dia,
+                alerta_apos_dias
+            FROM configuracoes_cobranca
+            WHERE id = 1
+            """
+        )
+        return row or {
+            "id": 1,
+            "inicio_cobranca_dia": 5,
+            "encerramento_cobranca_dia": 12,
+            "alerta_apos_dias": 4,
+        }
+
+    def upsert_settings(
+        self,
+        inicio_cobranca_dia: int,
+        encerramento_cobranca_dia: int,
+        alerta_apos_dias: int,
+    ) -> None:
+        self._execute(
+            """
+            INSERT INTO configuracoes_cobranca (
+                id,
+                inicio_cobranca_dia,
+                encerramento_cobranca_dia,
+                alerta_apos_dias
+            )
+            VALUES (1, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                inicio_cobranca_dia = excluded.inicio_cobranca_dia,
+                encerramento_cobranca_dia = excluded.encerramento_cobranca_dia,
+                alerta_apos_dias = excluded.alerta_apos_dias
+            """,
+            (inicio_cobranca_dia, encerramento_cobranca_dia, alerta_apos_dias),
+        )
 
 
 class TipoRepository(BaseRepository):

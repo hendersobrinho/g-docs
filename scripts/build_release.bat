@@ -87,6 +87,18 @@ if not defined APP_VERSION (
     exit /b 1
 )
 
+set "INSTALLER_VERSION="
+for /f %%i in ('powershell -NoProfile -Command "$content = Get-Content 'assets\installer\DocFLow.iss' -Raw; if ($content -match '#define AppVersion \"([^\"]+)\"') { $matches[1] }"') do set "INSTALLER_VERSION=%%i"
+if not defined INSTALLER_VERSION (
+    echo Nao foi possivel identificar a versao do instalador em assets\installer\DocFLow.iss.
+    exit /b 1
+)
+if /I not "%INSTALLER_VERSION%"=="%APP_VERSION%" (
+    echo A versao do instalador ^(%INSTALLER_VERSION%^) difere da versao da aplicacao ^(%APP_VERSION%^).
+    echo Atualize assets\installer\DocFLow.iss antes de empacotar no Windows.
+    exit /b 1
+)
+
 if not exist "dist_release" mkdir "dist_release"
 set "ZIP_PATH=dist_release\DocFLow-win64-v%APP_VERSION%.zip"
 if exist "%ZIP_PATH%" del /f /q "%ZIP_PATH%"

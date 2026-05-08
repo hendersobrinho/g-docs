@@ -5,6 +5,7 @@ from pathlib import Path
 
 from documentos_empresa_app.database.connection import DatabaseManager
 from documentos_empresa_app.database.repositories import (
+    CollectionConfigRepository,
     DeliveryMethodRepository,
     DocumentoRepository,
     EmpresaRepository,
@@ -18,6 +19,7 @@ from documentos_empresa_app.database.repositories import (
 from documentos_empresa_app.database.schema import initialize_schema
 from documentos_empresa_app.services.audit_service import AuditService
 from documentos_empresa_app.services.auth_service import AuthService
+from documentos_empresa_app.services.collection_service import CollectionService
 from documentos_empresa_app.services.database_maintenance_service import DatabaseMaintenanceService
 from documentos_empresa_app.services.delivery_method_service import DeliveryMethodService
 from documentos_empresa_app.services.documento_service import DocumentoService
@@ -48,6 +50,7 @@ class ApplicationServices:
     log_service: LogService
     pending_report_service: PendingReportService
     panorama_service: PanoramaService
+    collection_service: CollectionService
     session_service: SessionService
 
 
@@ -60,6 +63,7 @@ def build_application_services(db_path: str | Path, session_service: SessionServ
     session = session_service or SessionService()
 
     empresa_repository = EmpresaRepository(db_manager)
+    collection_config_repository = CollectionConfigRepository(db_manager)
     delivery_method_repository = DeliveryMethodRepository(db_manager)
     tipo_repository = TipoRepository(db_manager)
     documento_repository = DocumentoRepository(db_manager)
@@ -106,6 +110,13 @@ def build_application_services(db_path: str | Path, session_service: SessionServ
         periodo_repository,
         status_repository,
     )
+    collection_service = CollectionService(
+        collection_config_repository,
+        empresa_repository,
+        documento_repository,
+        periodo_repository,
+        status_repository,
+    )
     import_service = ImportService(
         empresa_service,
         tipo_service,
@@ -136,5 +147,6 @@ def build_application_services(db_path: str | Path, session_service: SessionServ
         log_service=log_service,
         pending_report_service=pending_report_service,
         panorama_service=panorama_service,
+        collection_service=collection_service,
         session_service=session,
     )

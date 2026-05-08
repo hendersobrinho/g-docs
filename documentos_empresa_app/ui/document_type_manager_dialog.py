@@ -3,6 +3,8 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from documentos_empresa_app.ui.status_icons import set_button_icon
+from documentos_empresa_app.ui.styles import configure_app_style
 from documentos_empresa_app.utils.common import TYPE_OCCURRENCE_CHOICES, TYPE_OCCURRENCE_MENSAL
 from documentos_empresa_app.utils.helpers import ValidationError
 
@@ -34,6 +36,7 @@ class DocumentTypeManagerDialog(tk.Toplevel):
         self.transient(parent.winfo_toplevel())
         self.resizable(True, True)
         self.minsize(620, 420)
+        configure_app_style(self)
 
         self._build_layout()
         self.ocorrencia_label_var.set(self._occurrence_label(TYPE_OCCURRENCE_MENSAL))
@@ -96,13 +99,14 @@ class DocumentTypeManagerDialog(tk.Toplevel):
         )
         self.ocorrencia_combo.grid(row=1, column=1, sticky="ew", pady=(0, 8))
 
-        self.save_button = ttk.Button(editor, text="Cadastrar tipo", command=self.save_tipo)
+        self.save_button = ttk.Button(editor, text="Cadastrar tipo", command=self.save_tipo, style="Primary.TButton")
         self.save_button.grid(row=2, column=0, sticky="ew", padx=(0, 8))
-        ttk.Button(editor, text="Limpar", command=self.clear_form).grid(row=2, column=1, sticky="ew")
+        set_button_icon(self.save_button)
+        ttk.Button(editor, text="Limpar", command=self.clear_form, style="Quiet.TButton").grid(row=2, column=1, sticky="ew")
 
-        self.use_button = ttk.Button(editor, text="Usar no documento", command=self.apply_selected_type)
+        self.use_button = ttk.Button(editor, text="Usar no documento", command=self.apply_selected_type, style="Secondary.TButton")
         self.use_button.grid(row=3, column=0, sticky="ew", padx=(0, 8), pady=(8, 0))
-        self.delete_button = ttk.Button(editor, text="Excluir tipo selecionado", command=self.delete_tipo)
+        self.delete_button = ttk.Button(editor, text="Excluir tipo selecionado", command=self.delete_tipo, style="Danger.TButton")
         self.delete_button.grid(row=3, column=1, sticky="ew", pady=(8, 0))
 
         ttk.Label(

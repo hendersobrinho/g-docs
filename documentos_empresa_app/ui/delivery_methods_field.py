@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from documentos_empresa_app.ui.styles import configure_app_style
 from documentos_empresa_app.utils.common import DOCUMENT_DELIVERY_OPTIONS, ValidationError, parse_delivery_methods
 
 
@@ -19,6 +20,7 @@ class DeliveryMethodsManagerDialog(tk.Toplevel):
         self.transient(parent.winfo_toplevel())
         self.resizable(True, True)
         self.minsize(420, 320)
+        configure_app_style(self)
 
         self._build_layout()
         self.refresh_methods()
@@ -64,10 +66,10 @@ class DeliveryMethodsManagerDialog(tk.Toplevel):
         entry.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 8))
         entry.bind("<Return>", self.save_method)
 
-        self.save_button = ttk.Button(editor, text="Adicionar", command=self.save_method)
+        self.save_button = ttk.Button(editor, text="Adicionar", command=self.save_method, style="Primary.TButton")
         self.save_button.grid(row=2, column=0, sticky="ew", padx=(0, 8))
-        ttk.Button(editor, text="Limpar", command=self.clear_selection).grid(row=2, column=1, sticky="ew")
-        ttk.Button(editor, text="Excluir do sistema", command=self.delete_selected_method).grid(
+        ttk.Button(editor, text="Limpar", command=self.clear_selection, style="Quiet.TButton").grid(row=2, column=1, sticky="ew")
+        ttk.Button(editor, text="Excluir do sistema", command=self.delete_selected_method, style="Danger.TButton").grid(
             row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0)
         )
 
@@ -174,7 +176,7 @@ class DeliveryMethodsField(ttk.LabelFrame):
         self.combo.grid(row=0, column=0, sticky="ew", padx=(0, 6))
         self.combo.bind("<<ComboboxSelected>>", self.toggle_selected)
         self.combo.bind("<Return>", self.toggle_selected)
-        self.manage_button = ttk.Button(self, text="...", width=3, command=self.open_manager_dialog)
+        self.manage_button = ttk.Button(self, text="...", width=3, command=self.open_manager_dialog, style="Toolbar.TButton")
         self.manage_button.grid(row=0, column=1, sticky="ew")
 
         list_frame = ttk.Frame(self)
@@ -192,7 +194,7 @@ class DeliveryMethodsField(ttk.LabelFrame):
         self.selected_listbox.bind("<Double-1>", self.remove_selected_item)
         self.selected_listbox.bind("<Delete>", self.remove_selected_item)
 
-        self.remove_button = ttk.Button(list_frame, text="Remover", command=self.remove_selected_item)
+        self.remove_button = ttk.Button(list_frame, text="Remover", command=self.remove_selected_item, style="Quiet.TButton")
         self.remove_button.grid(row=0, column=1, sticky="ns", padx=(6, 0))
 
         self.columnconfigure(0, weight=1)

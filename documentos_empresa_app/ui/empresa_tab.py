@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from documentos_empresa_app.ui.status_icons import set_button_icon
 from documentos_empresa_app.utils.common import MAX_COMPANY_OBSERVATION_LENGTH
 from documentos_empresa_app.utils.helpers import CompanySelector, ValidationError
 
@@ -114,11 +115,15 @@ class EmpresaTab(ttk.Frame):
         self.nome_var = tk.StringVar()
         self.email_var = tk.StringVar()
         self.contato_var = tk.StringVar()
+        self.cobranca_inicio_var = tk.StringVar()
+        self.cobranca_fim_var = tk.StringVar()
+        self.cobranca_alerta_var = tk.StringVar()
         self.info_codigo_var = tk.StringVar(value="-")
         self.info_nome_var = tk.StringVar(value="Nenhuma empresa consultada.")
         self.info_email_var = tk.StringVar(value="-")
         self.info_contato_var = tk.StringVar(value="-")
         self.info_observacao_var = tk.StringVar(value="-")
+        self.info_cobranca_var = tk.StringVar(value="-")
         self.info_situacao_var = tk.StringVar(value="Nenhuma empresa consultada.")
         self.observacao_counter_var = tk.StringVar(value=f"0/{MAX_COMPANY_OBSERVATION_LENGTH}")
         self.summary_value_labels: list[ttk.Label] = []
@@ -166,18 +171,19 @@ class EmpresaTab(ttk.Frame):
         self._build_summary_row(summary, 3, "Email", self.info_email_var)
         self._build_summary_row(summary, 4, "Contato", self.info_contato_var)
         self._build_summary_row(summary, 5, "Observacao", self.info_observacao_var)
+        self._build_summary_row(summary, 6, "Cobranca", self.info_cobranca_var)
 
         summary_actions = ttk.Frame(summary)
-        summary_actions.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        summary_actions.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         summary_actions.columnconfigure(0, weight=1)
         summary_actions.columnconfigure(1, weight=1)
         summary_actions.columnconfigure(2, weight=1)
 
-        self.edit_button = ttk.Button(summary_actions, text="Editar cadastro", command=self.start_edit_company)
+        self.edit_button = ttk.Button(summary_actions, text="Editar cadastro", command=self.start_edit_company, style="Secondary.TButton")
         self.edit_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self.toggle_active_button = ttk.Button(summary_actions, command=self.toggle_selected_active)
+        self.toggle_active_button = ttk.Button(summary_actions, command=self.toggle_selected_active, style="Secondary.TButton")
         self.toggle_active_button.grid(row=0, column=1, sticky="ew", padx=(0, 8))
-        self.delete_button = ttk.Button(summary_actions, text="Excluir", command=self.delete_company)
+        self.delete_button = ttk.Button(summary_actions, text="Excluir", command=self.delete_company, style="Danger.TButton")
         self.delete_button.grid(row=0, column=2, sticky="ew")
 
         form = ttk.LabelFrame(self, text="Cadastro e manutencao de empresas", padding=12)
@@ -223,21 +229,76 @@ class EmpresaTab(ttk.Frame):
             row=2, column=0, sticky="e", pady=(4, 0)
         )
 
+        cobranca_row = ttk.LabelFrame(form, text="Regra propria da empresa (override opcional)", padding=10)
+        cobranca_row.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        cobranca_row.columnconfigure(0, weight=1)
+        cobranca_row.columnconfigure(1, weight=1)
+        cobranca_row.columnconfigure(2, weight=1)
+
+        ttk.Label(
+            cobranca_row,
+            text=(
+                "Se preencher estes campos, esta empresa passa a usar uma regra propria de cobranca. "
+                "Se deixar em branco, ela herda automaticamente a regra global definida na aba Cobrancas."
+            ),
+            wraplength=760,
+            justify="left",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
+        ttk.Label(cobranca_row, text="Dia inicial da cobranca").grid(row=1, column=0, sticky="w")
+        self.cobranca_inicio_entry = ttk.Entry(
+            cobranca_row,
+            textvariable=self.cobranca_inicio_var,
+            width=18,
+            style="CompanyForm.TEntry",
+        )
+        self.cobranca_inicio_entry.grid(
+            row=2,
+            column=0,
+            sticky="ew",
+            padx=(0, 10),
+        )
+        ttk.Label(cobranca_row, text="Dia final da cobranca").grid(row=1, column=1, sticky="w")
+        self.cobranca_fim_entry = ttk.Entry(
+            cobranca_row,
+            textvariable=self.cobranca_fim_var,
+            width=18,
+            style="CompanyForm.TEntry",
+        )
+        self.cobranca_fim_entry.grid(
+            row=2,
+            column=1,
+            sticky="ew",
+            padx=(0, 10),
+        )
+        ttk.Label(cobranca_row, text="Dias para virar alerta").grid(row=1, column=2, sticky="w")
+        self.cobranca_alerta_entry = ttk.Entry(
+            cobranca_row,
+            textvariable=self.cobranca_alerta_var,
+            width=18,
+            style="CompanyForm.TEntry",
+        )
+        self.cobranca_alerta_entry.grid(
+            row=2,
+            column=2,
+            sticky="ew",
+        )
+
         action_row = ttk.Frame(form)
-        action_row.grid(row=3, column=0, sticky="ew")
+        action_row.grid(row=4, column=0, sticky="ew")
         action_row.columnconfigure(0, weight=1)
         action_row.columnconfigure(1, weight=1)
         action_row.columnconfigure(2, weight=1)
 
-        self.new_button = ttk.Button(action_row, text="Novo cadastro", command=self.start_new_company)
+        self.new_button = ttk.Button(action_row, text="Novo cadastro", command=self.start_new_company, style="Secondary.TButton")
         self.new_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        self.save_button = ttk.Button(action_row, text="Salvar", command=self.save_company)
+        self.save_button = ttk.Button(action_row, text="Salvar", command=self.save_company, style="Primary.TButton")
         self.save_button.grid(row=0, column=1, sticky="ew", padx=(0, 8))
-        self.cancel_button = ttk.Button(action_row, text="Cancelar", command=self.cancel_company_edit)
+        set_button_icon(self.save_button)
+        self.cancel_button = ttk.Button(action_row, text="Cancelar", command=self.cancel_company_edit, style="Quiet.TButton")
         self.cancel_button.grid(row=0, column=2, sticky="ew")
 
         import_row = ttk.Frame(form)
-        import_row.grid(row=4, column=0, sticky="ew", pady=(10, 0))
+        import_row.grid(row=5, column=0, sticky="ew", pady=(10, 0))
         import_row.columnconfigure(1, weight=1)
 
         ttk.Label(import_row, text="Importacao completa").grid(row=0, column=0, sticky="w", padx=(0, 10))
@@ -245,9 +306,10 @@ class EmpresaTab(ttk.Frame):
             import_row,
             text="Importar planilha",
             command=self.import_full_registrations,
+            style="Primary.TButton",
         ).grid(row=0, column=1, sticky="w")
 
-        import_menu_button = ttk.Menubutton(import_row, text="Layout e modelo")
+        import_menu_button = ttk.Menubutton(import_row, text="Layout e modelo", style="Secondary.TMenubutton")
         import_menu = tk.Menu(import_menu_button, tearoff=False)
         import_menu.add_command(label="Ver layout", command=self.show_complete_import_layout)
         import_menu.add_command(label="Baixar modelo", command=self.download_complete_import_template)
@@ -303,6 +365,11 @@ class EmpresaTab(ttk.Frame):
         self.nome_var.set(company["nome_empresa"])
         self.email_var.set(company.get("email_contato") or "")
         self.contato_var.set(company.get("nome_contato") or "")
+        self.cobranca_inicio_var.set("" if company.get("cobranca_inicio_dia") is None else str(company["cobranca_inicio_dia"]))
+        self.cobranca_fim_var.set("" if company.get("cobranca_fim_dia") is None else str(company["cobranca_fim_dia"]))
+        self.cobranca_alerta_var.set(
+            "" if company.get("cobranca_alerta_dias") is None else str(company["cobranca_alerta_dias"])
+        )
         self._set_observacao_text(company.get("observacao"))
         self._update_company_summary(company)
         self._set_form_mode("view")
@@ -317,6 +384,9 @@ class EmpresaTab(ttk.Frame):
         self.nome_var.set("")
         self.email_var.set("")
         self.contato_var.set("")
+        self.cobranca_inicio_var.set("")
+        self.cobranca_fim_var.set("")
+        self.cobranca_alerta_var.set("")
         self._set_observacao_text("")
         self._update_company_summary(None)
         self._set_form_mode("idle")
@@ -338,6 +408,7 @@ class EmpresaTab(ttk.Frame):
             self.info_email_var.set("-")
             self.info_contato_var.set("-")
             self.info_observacao_var.set("-")
+            self.info_cobranca_var.set("-")
             self.info_situacao_var.set("Nenhuma empresa consultada.")
             return
 
@@ -346,6 +417,7 @@ class EmpresaTab(ttk.Frame):
         self.info_email_var.set(company.get("email_contato") or "-")
         self.info_contato_var.set(company.get("nome_contato") or "-")
         self.info_observacao_var.set(company.get("observacao") or "-")
+        self.info_cobranca_var.set(self._format_company_collection_rule(company))
         self.info_situacao_var.set("Empresa ativa." if company["ativa"] else "Empresa inativa.")
 
     def _get_observacao_text(self) -> str:
@@ -392,6 +464,11 @@ class EmpresaTab(ttk.Frame):
 
         target_company_id = self.selected_company_id
         try:
+            self.services.collection_service.validate_company_settings_values(
+                self.cobranca_inicio_var.get(),
+                self.cobranca_fim_var.get(),
+                self.cobranca_alerta_var.get(),
+            )
             if self.form_mode == "edit" and self.selected_company_id:
                 self.services.empresa_service.update_empresa(
                     self.selected_company_id,
@@ -399,6 +476,12 @@ class EmpresaTab(ttk.Frame):
                     self.email_var.get(),
                     self.contato_var.get(),
                     self._get_observacao_text(),
+                )
+                self.services.collection_service.update_company_settings(
+                    self.selected_company_id,
+                    self.cobranca_inicio_var.get(),
+                    self.cobranca_fim_var.get(),
+                    self.cobranca_alerta_var.get(),
                 )
                 messagebox.showinfo("Empresas", "Empresa atualizada com sucesso.", parent=self)
             else:
@@ -408,6 +491,12 @@ class EmpresaTab(ttk.Frame):
                     self.email_var.get(),
                     self.contato_var.get(),
                     self._get_observacao_text(),
+                )
+                self.services.collection_service.update_company_settings(
+                    target_company_id,
+                    self.cobranca_inicio_var.get(),
+                    self.cobranca_fim_var.get(),
+                    self.cobranca_alerta_var.get(),
                 )
                 messagebox.showinfo("Empresas", "Empresa cadastrada com sucesso.", parent=self)
         except ValidationError as exc:
@@ -479,6 +568,9 @@ class EmpresaTab(ttk.Frame):
         self.nome_entry.configure(state="normal" if editable else "disabled")
         self.email_entry.configure(state="normal" if editable else "disabled")
         self.contato_entry.configure(state="normal" if editable else "disabled")
+        self.cobranca_inicio_entry.configure(state="normal" if editable else "disabled")
+        self.cobranca_fim_entry.configure(state="normal" if editable else "disabled")
+        self.cobranca_alerta_entry.configure(state="normal" if editable else "disabled")
         self.observacao_text.configure(state="normal" if editable else "disabled")
         self._apply_observacao_visual_state(editable)
         self.save_button.configure(state="normal" if editable else "disabled")
@@ -487,6 +579,27 @@ class EmpresaTab(ttk.Frame):
         self.edit_button.configure(state="normal" if has_selection and not editable else "disabled")
         self.delete_button.configure(state="normal" if has_selection and not editable else "disabled")
         self._update_company_action_buttons()
+
+    def _format_company_collection_rule(self, company: dict) -> str:
+        if company.get("cobranca_inicio_dia") is None and company.get("cobranca_fim_dia") is None and company.get("cobranca_alerta_dias") is None:
+            global_settings = self.services.collection_service.get_global_settings()
+            return (
+                f'Usa regra global: inicio dia {global_settings["inicio_cobranca_dia"]}, '
+                f'fim dia {global_settings["encerramento_cobranca_dia"]}, '
+                f'alerta apos {global_settings["alerta_apos_dias"]} dia(s).'
+            )
+
+        inicio = company.get("cobranca_inicio_dia")
+        fim = company.get("cobranca_fim_dia")
+        alerta = company.get("cobranca_alerta_dias")
+        parts = []
+        if inicio is not None:
+            parts.append(f"inicio dia {inicio}")
+        if fim is not None:
+            parts.append(f"fim dia {fim}")
+        if alerta is not None:
+            parts.append(f"alerta apos {alerta} dia(s)")
+        return "Regra propria: " + ", ".join(parts) + "."
 
     def _update_company_action_buttons(self) -> None:
         has_selection = self.selected_company_id is not None

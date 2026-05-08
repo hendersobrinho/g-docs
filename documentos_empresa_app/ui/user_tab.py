@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from documentos_empresa_app.ui.status_icons import set_button_icon
 from documentos_empresa_app.utils.helpers import ValidationError
 
 
@@ -38,9 +39,10 @@ class UserTab(ttk.Frame):
             row=1, column=3, sticky="w", padx=(0, 10)
         )
 
-        self.save_button = ttk.Button(form, text="Cadastrar usuario", command=self.save_user)
+        self.save_button = ttk.Button(form, text="Cadastrar usuario", command=self.save_user, style="Primary.TButton")
         self.save_button.grid(row=1, column=4, sticky="ew", padx=(0, 8))
-        ttk.Button(form, text="Limpar", command=self.clear_form).grid(row=1, column=5, sticky="ew")
+        set_button_icon(self.save_button)
+        ttk.Button(form, text="Limpar", command=self.clear_form, style="Quiet.TButton").grid(row=1, column=5, sticky="ew")
 
         ttk.Label(
             form,

@@ -5,6 +5,8 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from documentos_empresa_app.utils.common import APP_NAME
+from documentos_empresa_app.ui.status_icons import set_button_icon
+from documentos_empresa_app.ui.styles import configure_app_style
 from documentos_empresa_app.utils.auto_backup import (
     MAX_AUTO_BACKUP_INTERVAL_DAYS,
     MAX_AUTO_BACKUP_KEEP_LAST,
@@ -32,6 +34,7 @@ class BackupSettingsDialog(tk.Toplevel):
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self.cancel)
         apply_window_icon(self)
+        configure_app_style(self)
 
         self._build_layout()
         self._toggle_fields()
@@ -54,7 +57,7 @@ class BackupSettingsDialog(tk.Toplevel):
         ttk.Label(container, text="Pasta de backup").grid(row=1, column=0, columnspan=3, sticky="w", pady=(12, 0))
         self.directory_entry = ttk.Entry(container, textvariable=self.directory_var, width=62)
         self.directory_entry.grid(row=2, column=0, columnspan=2, sticky="ew", padx=(0, 8))
-        self.choose_button = ttk.Button(container, text="Escolher...", command=self.choose_directory)
+        self.choose_button = ttk.Button(container, text="Escolher...", command=self.choose_directory, style="Secondary.TButton")
         self.choose_button.grid(row=2, column=2, sticky="ew")
 
         ttk.Label(container, text="Intervalo em dias").grid(row=3, column=0, sticky="w", pady=(12, 0))
@@ -96,8 +99,10 @@ class BackupSettingsDialog(tk.Toplevel):
 
         button_row = ttk.Frame(container)
         button_row.grid(row=7, column=0, columnspan=3, sticky="e", pady=(18, 0))
-        ttk.Button(button_row, text="Cancelar", command=self.cancel).pack(side="right")
-        ttk.Button(button_row, text="Salvar", command=self.confirm).pack(side="right", padx=(0, 8))
+        ttk.Button(button_row, text="Cancelar", command=self.cancel, style="Quiet.TButton").pack(side="right")
+        self.save_button = ttk.Button(button_row, text="Salvar", command=self.confirm, style="Primary.TButton")
+        self.save_button.pack(side="right", padx=(0, 8))
+        set_button_icon(self.save_button)
 
         container.columnconfigure(0, weight=1)
         container.columnconfigure(1, weight=1)

@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from documentos_empresa_app.services.license_service import LicenseError, LicenseService
+from documentos_empresa_app.ui.styles import configure_app_style
 from documentos_empresa_app.utils.common import APP_NAME
 from documentos_empresa_app.utils.resources import apply_window_icon
 
@@ -31,6 +32,7 @@ class LicenseWindow(tk.Toplevel):
             self.transient(parent_toplevel)
         self.protocol("WM_DELETE_WINDOW", self.close)
         apply_window_icon(self)
+        configure_app_style(self)
 
         self._build_layout()
         self.grab_set()
@@ -72,12 +74,12 @@ class LicenseWindow(tk.Toplevel):
         button_row = ttk.Frame(container)
         button_row.grid(row=3, column=0, sticky="e", pady=(12, 0))
 
-        ttk.Button(button_row, text="Cancelar", command=self.close).pack(side="right")
-        ttk.Button(button_row, text="Importar arquivo...", command=self.import_license_file).pack(
+        ttk.Button(button_row, text="Cancelar", command=self.close, style="Quiet.TButton").pack(side="right")
+        ttk.Button(button_row, text="Importar arquivo...", command=self.import_license_file, style="Secondary.TButton").pack(
             side="right",
             padx=(0, 8),
         )
-        ttk.Button(button_row, text="Ativar licenca", command=self.activate_license).pack(side="right", padx=(0, 8))
+        ttk.Button(button_row, text="Ativar licenca", command=self.activate_license, style="Primary.TButton").pack(side="right", padx=(0, 8))
 
         self.license_text.focus_set()
 

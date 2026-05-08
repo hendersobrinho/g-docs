@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
+from urllib.parse import quote
 
 from documentos_empresa_app.utils.common import (
     APP_NAME,
@@ -29,6 +30,7 @@ from documentos_empresa_app.utils.storage import (
     is_path_within_directory,
 )
 from documentos_empresa_app.utils.resources import get_executable_directory
+from documentos_empresa_app.ui.styles import configure_app_style
 
 
 def ensure_config_dir() -> None:
@@ -178,6 +180,65 @@ def open_directory_in_file_manager(directory: str | Path) -> None:
         raise ValidationError("Nao foi possivel abrir a pasta vinculada.") from exc
 
 
+def get_default_email_handler() -> str:
+    if sys.platform.startswith("win"):
+        return "Cliente de email padrao do Windows"
+    if sys.platform == "darwin":
+        return "Cliente de email padrao do macOS"
+
+    for command in (
+        ["xdg-mime", "query", "default", "x-scheme-handler/mailto"],
+        ["gio", "mime", "x-scheme-handler/mailto"],
+    ):
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, check=True)
+        except (OSError, subprocess.CalledProcessError):
+            continue
+        output = result.stdout.strip()
+        if not output:
+            continue
+        if "Default application for" in output:
+            marker = "Default application for “x-scheme-handler/mailto”:"
+            if marker in output:
+                return output.split(marker, 1)[1].strip()
+        return output.splitlines()[0].strip()
+    return "Cliente de email padrao do sistema"
+
+
+def open_email_draft(to_address: str, subject: str, body: str) -> str:
+    to_value = str(to_address or "").strip()
+    if not to_value:
+        raise ValidationError("Nao foi informado um destinatario de email.")
+
+    handler_name = get_default_email_handler()
+    mailto_url = f'mailto:{quote(to_value)}?subject={quote(subject)}&body={quote(body)}'
+
+    try:
+        if sys.platform.startswith("win") and hasattr(os, "startfile"):
+            os.startfile(mailto_url)
+            return handler_name
+
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", mailto_url])
+            return handler_name
+
+        linux_attempts = [
+            ["xdg-email", "--utf8", "--subject", subject, "--body", body, to_value],
+            ["gio", "open", mailto_url],
+            ["xdg-open", mailto_url],
+        ]
+        for command in linux_attempts:
+            try:
+                subprocess.Popen(command)
+                return handler_name
+            except OSError:
+                continue
+    except OSError as exc:
+        raise ValidationError("Nao foi possivel abrir o cliente de email do sistema.") from exc
+
+    raise ValidationError("Nao foi possivel localizar um cliente de email compativel neste computador.")
+
+
 def get_install_root_directory() -> Path:
     app_reference = Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve()
     anchor = app_reference.anchor or Path.cwd().anchor or os.sep
@@ -199,6 +260,7 @@ class DatabasePathDialog(tk.Toplevel):
         if toplevel.winfo_viewable():
             self.transient(toplevel)
         self.protocol("WM_DELETE_WINDOW", self.cancel)
+        configure_app_style(self)
 
         self._build_layout()
         self._update_preview()
@@ -225,10 +287,10 @@ class DatabasePathDialog(tk.Toplevel):
         folder_entry.grid(row=2, column=0, sticky="ew", padx=(0, 8))
         folder_entry.bind("<KeyRelease>", lambda _event: self._update_preview())
         folder_entry.bind("<FocusOut>", lambda _event: self._update_preview())
-        ttk.Button(container, text="Escolher pasta", command=self.choose_folder).grid(
+        ttk.Button(container, text="Escolher pasta", command=self.choose_folder, style="Secondary.TButton").grid(
             row=2, column=1, sticky="ew", padx=(0, 8)
         )
-        ttk.Button(container, text="Criar pasta", command=self.create_folder).grid(row=2, column=2, sticky="ew")
+        ttk.Button(container, text="Criar pasta", command=self.create_folder, style="Secondary.TButton").grid(row=2, column=2, sticky="ew")
 
         ttk.Label(container, text="Nome do arquivo do banco").grid(row=3, column=0, sticky="w", pady=(12, 0))
         filename_entry = ttk.Entry(container, textvariable=self.filename_var, width=32)
@@ -243,8 +305,8 @@ class DatabasePathDialog(tk.Toplevel):
 
         button_row = ttk.Frame(container)
         button_row.grid(row=7, column=0, columnspan=3, sticky="e")
-        ttk.Button(button_row, text="Cancelar", command=self.cancel).pack(side="right")
-        ttk.Button(button_row, text="Confirmar", command=self.confirm).pack(side="right", padx=(0, 8))
+        ttk.Button(button_row, text="Cancelar", command=self.cancel, style="Quiet.TButton").pack(side="right")
+        ttk.Button(button_row, text="Confirmar", command=self.confirm, style="Primary.TButton").pack(side="right", padx=(0, 8))
 
         container.columnconfigure(0, weight=1)
 
@@ -478,6 +540,7 @@ class CompanyListDialog(tk.Toplevel):
         self.selected_company_id: int | None = None
         self.companies = companies
         self.search_var = tk.StringVar(value=initial_search)
+        configure_app_style(self)
 
         self._build_layout()
         self._populate_tree()
@@ -524,8 +587,8 @@ class CompanyListDialog(tk.Toplevel):
 
         button_row = ttk.Frame(self, padding=12)
         button_row.grid(row=2, column=0, sticky="e")
-        ttk.Button(button_row, text="Cancelar", command=self.destroy).pack(side="right")
-        ttk.Button(button_row, text="Selecionar", command=self._confirm_selection).pack(side="right", padx=(0, 8))
+        ttk.Button(button_row, text="Cancelar", command=self.destroy, style="Quiet.TButton").pack(side="right")
+        ttk.Button(button_row, text="Selecionar", command=self._confirm_selection, style="Primary.TButton").pack(side="right", padx=(0, 8))
 
         search_entry.focus_set()
 
@@ -600,6 +663,7 @@ class CompanyMultiSelectDialog(tk.Toplevel):
         self.companies = companies
         self.selected_company_ids = [int(company_id) for company_id in (selected_company_ids or [])]
         self.search_var = tk.StringVar()
+        configure_app_style(self)
 
         self._build_layout()
         self._populate_tree()
@@ -645,10 +709,10 @@ class CompanyMultiSelectDialog(tk.Toplevel):
 
         button_row = ttk.Frame(self, padding=12)
         button_row.grid(row=2, column=0, sticky="ew")
-        ttk.Button(button_row, text="Selecionar todas", command=self._select_all_visible).pack(side="left")
-        ttk.Button(button_row, text="Limpar", command=self._clear_selection).pack(side="left", padx=(8, 0))
-        ttk.Button(button_row, text="Cancelar", command=self.destroy).pack(side="right")
-        ttk.Button(button_row, text="Confirmar", command=self._confirm_selection).pack(side="right", padx=(0, 8))
+        ttk.Button(button_row, text="Selecionar todas", command=self._select_all_visible, style="Secondary.TButton").pack(side="left")
+        ttk.Button(button_row, text="Limpar", command=self._clear_selection, style="Quiet.TButton").pack(side="left", padx=(8, 0))
+        ttk.Button(button_row, text="Cancelar", command=self.destroy, style="Quiet.TButton").pack(side="right")
+        ttk.Button(button_row, text="Confirmar", command=self._confirm_selection, style="Primary.TButton").pack(side="right", padx=(0, 8))
 
         search_entry.focus_set()
 
@@ -762,7 +826,7 @@ class CompanySelector(ttk.LabelFrame):
 
         action_frame = ttk.Frame(self)
         action_frame.grid(row=1, column=2, columnspan=2, sticky="w")
-        ttk.Button(action_frame, text="...", width=3, command=self.open_company_list).pack(side="left")
+        ttk.Button(action_frame, text="...", width=3, command=self.open_company_list, style="Toolbar.TButton").pack(side="left")
         ttk.Label(self, textvariable=self.status_var).grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
 
         self.columnconfigure(1, weight=1)

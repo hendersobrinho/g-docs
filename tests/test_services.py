@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from documentos_empresa_app.database.connection import DatabaseManager
 from documentos_empresa_app.database.repositories import (
+    CollectionConfigRepository,
     DeliveryMethodRepository,
     DocumentoRepository,
     EmpresaRepository,
@@ -21,6 +22,7 @@ from documentos_empresa_app.database.repositories import (
 from documentos_empresa_app.database.schema import initialize_schema
 from documentos_empresa_app.services.audit_service import AuditService
 from documentos_empresa_app.services.auth_service import AuthService
+from documentos_empresa_app.services.collection_service import CollectionService
 from documentos_empresa_app.services.database_maintenance_service import DatabaseMaintenanceService
 from documentos_empresa_app.services.delivery_method_service import DeliveryMethodService
 from documentos_empresa_app.services.documento_service import DocumentoService
@@ -57,6 +59,7 @@ class ApplicationServiceTests(unittest.TestCase):
 
         self.empresa_repository = EmpresaRepository(db_manager)
         self.delivery_method_repository = DeliveryMethodRepository(db_manager)
+        self.collection_config_repository = CollectionConfigRepository(db_manager)
         self.tipo_repository = TipoRepository(db_manager)
         self.documento_repository = DocumentoRepository(db_manager)
         self.periodo_repository = PeriodoRepository(db_manager)
@@ -95,6 +98,13 @@ class ApplicationServiceTests(unittest.TestCase):
             self.status_repository,
         )
         self.panorama_service = PanoramaService(
+            self.empresa_repository,
+            self.documento_repository,
+            self.periodo_repository,
+            self.status_repository,
+        )
+        self.collection_service = CollectionService(
+            self.collection_config_repository,
             self.empresa_repository,
             self.documento_repository,
             self.periodo_repository,
@@ -308,6 +318,27 @@ class ApplicationServiceTests(unittest.TestCase):
         self.assertEqual(worksheet["C2"].value, "03/2026 - Marco")
         self.assertEqual(worksheet["D2"].value, "Contrato Social")
         self.assertEqual(worksheet["E2"].value, "Pendente")
+
+    def test_pending_report_exports_pdf(self) -> None:
+        empresa_id = self.empresa_service.create_empresa(112, "Empresa PDF")
+        tipo_id = self.tipo_service.get_or_create_tipo("Balancetes")["id"]
+        documento_a_id = self.documento_service.create_documento(empresa_id, tipo_id, "Relatorio Gerencial")
+        documento_b_id = self.documento_service.create_documento(empresa_id, tipo_id, "Fluxo de Caixa")
+        self.periodo_service.generate_year(2026)
+        periodos = self.periodo_service.list_periodos()
+        abril = next(item for item in periodos if item["ano"] == 2026 and item["mes"] == 4)
+
+        self.status_service.update_status(documento_a_id, abril["id"], "Pendente")
+        self.status_service.update_status(documento_b_id, abril["id"], "Pendente")
+
+        file_path = Path(self.temp_dir.name) / "relatorio_pendencias.pdf"
+        result = self.pending_report_service.export_pending_report_pdf(str(file_path), None, abril["id"], abril["id"])
+
+        content = file_path.read_bytes()
+
+        self.assertEqual(result["rows"], 2)
+        self.assertTrue(content.startswith(b"%PDF-1.4"))
+        self.assertGreater(len(content), 20000)
 
     def test_backup_restore_recovers_previous_database_state(self) -> None:
         self.empresa_service.create_empresa(113, "Empresa Antes do Backup")
@@ -876,6 +907,125 @@ class ApplicationServiceTests(unittest.TestCase):
             [row["empresa_id"] for row in view["rows"]],
             [pendente_id, nao_iniciada_id, sem_documentos_id, concluida_id],
         )
+
+    def test_collection_service_updates_global_and_company_settings(self) -> None:
+        settings = self.collection_service.get_global_settings()
+        self.assertEqual(
+            settings,
+            {
+                "inicio_cobranca_dia": 5,
+                "encerramento_cobranca_dia": 12,
+                "alerta_apos_dias": 4,
+            },
+        )
+
+        updated = self.collection_service.update_global_settings("6", "14", "5")
+        self.assertEqual(
+            updated,
+            {
+                "inicio_cobranca_dia": 6,
+                "encerramento_cobranca_dia": 14,
+                "alerta_apos_dias": 5,
+            },
+        )
+
+        empresa_id = self.empresa_service.create_empresa(144, "Empresa Config Cobranca")
+        company_settings = self.collection_service.update_company_settings(empresa_id, "8", "", "7")
+        self.assertEqual(
+            company_settings,
+            {
+                "inicio_cobranca_dia": 8,
+                "encerramento_cobranca_dia": None,
+                "alerta_apos_dias": 7,
+            },
+        )
+
+    def test_collection_queue_groups_pending_documents_and_applies_alert_rule_after_window(self) -> None:
+        self.collection_service.update_global_settings("5", "10", "4")
+        empresa_id = self.empresa_service.create_empresa(145, "Empresa Cobranca", "contato@empresa.com", "Maria")
+        tipo_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
+        documento_a_id = self.documento_service.create_documento(empresa_id, tipo_id, "Extrato Conta")
+        self.documento_service.create_documento(empresa_id, tipo_id, "Fluxo de Caixa", ["WhatsApp"])
+        self.periodo_service.generate_year(2026)
+        janeiro = self._periodo(2026, 1)
+
+        self.status_service.update_status(documento_a_id, janeiro["id"], "Pendente")
+
+        in_window = self.collection_service.build_collection_queue(reference_date=datetime(2026, 2, 8).date())
+        self.assertEqual(in_window["summary"]["total"], 1)
+        item = in_window["items"][0]
+        self.assertEqual(item["phase_key"], self.collection_service.PHASE_EM_COBRANCA)
+        self.assertFalse(item["alert_ready"])
+        self.assertEqual(item["document_count"], 2)
+        self.assertEqual(item["suggested_channel"], "Email")
+        self.assertEqual(
+            [document["nome_documento"] for document in item["documents"]],
+            ["Extrato Conta", "Fluxo de Caixa"],
+        )
+
+        overdue = self.collection_service.build_collection_queue(reference_date=datetime(2026, 2, 15).date())
+        overdue_item = overdue["items"][0]
+        self.assertEqual(overdue_item["phase_key"], self.collection_service.PHASE_EM_ATRASO)
+        self.assertTrue(overdue_item["alert_ready"])
+        self.assertEqual(overdue_item["days_after_end"], 5)
+
+        draft = self.collection_service.build_email_draft(overdue_item)
+        self.assertEqual(draft["to"], "contato@empresa.com")
+        self.assertIn("Empresa Cobranca", draft["subject"])
+        self.assertIn("Extrato Conta", draft["body"])
+        self.assertIn("Fluxo de Caixa", draft["body"])
+        self.assertIn("01/2026 - Janeiro", draft["body"])
+
+    def test_collection_queue_respects_company_override_for_collection_window(self) -> None:
+        self.collection_service.update_global_settings("5", "10", "4")
+        empresa_id = self.empresa_service.create_empresa(146, "Empresa Override")
+        self.collection_service.update_company_settings(empresa_id, "12", "18", "2")
+        tipo_id = self.tipo_service.get_or_create_tipo("Contratos")["id"]
+        self.documento_service.create_documento(empresa_id, tipo_id, "Contrato Social")
+        self.periodo_service.generate_year(2026)
+
+        before_window = self.collection_service.build_collection_queue(reference_date=datetime(2026, 2, 10).date())
+        self.assertEqual(before_window["summary"]["total"], 0)
+
+        after_window = self.collection_service.build_collection_queue(reference_date=datetime(2026, 2, 20).date())
+        self.assertEqual(after_window["summary"]["total"], 1)
+        item = after_window["items"][0]
+        self.assertEqual(item["settings_source"], "empresa")
+        self.assertEqual(item["window_start"].strftime("%d/%m/%Y"), "12/02/2026")
+        self.assertEqual(item["window_end"].strftime("%d/%m/%Y"), "18/02/2026")
+        self.assertEqual(item["days_after_end"], 2)
+        self.assertTrue(item["alert_ready"])
+
+    def test_collection_queue_groups_multiple_months_of_same_company_into_one_item(self) -> None:
+        self.collection_service.update_global_settings("5", "10", "4")
+        empresa_id = self.empresa_service.create_empresa(147, "Empresa Multimeses", "financeiro@empresa.com", "Joao")
+        tipo_id = self.tipo_service.get_or_create_tipo("Extratos CC")["id"]
+        documento_id = self.documento_service.create_documento(empresa_id, tipo_id, "Extrato Principal")
+        self.periodo_service.generate_year(2026)
+        janeiro = self._periodo(2026, 1)
+        fevereiro = self._periodo(2026, 2)
+
+        self.status_service.update_status(documento_id, janeiro["id"], "Pendente")
+        self.status_service.update_status(documento_id, fevereiro["id"], "Pendente")
+
+        queue = self.collection_service.build_collection_queue(reference_date=datetime(2026, 3, 20).date())
+
+        self.assertEqual(queue["summary"]["total"], 1)
+        item = queue["items"][0]
+        self.assertEqual(item["empresa_id"], empresa_id)
+        self.assertEqual(item["period_count"], 2)
+        self.assertEqual(item["document_count"], 2)
+        self.assertEqual(item["primary_period_id"], janeiro["id"])
+        self.assertIn("2 meses", item["period_summary"])
+        self.assertEqual(
+            [period_item["periodo_label"] for period_item in item["period_items"]],
+            ["01/2026 - Janeiro", "02/2026 - Fevereiro"],
+        )
+
+        draft = self.collection_service.build_email_draft(item)
+        self.assertIn("01/2026 - Janeiro", draft["body"])
+        self.assertIn("02/2026 - Fevereiro", draft["body"])
+        self.assertIn("meses anteriores", draft["body"])
 
     def test_renaming_delivery_method_updates_documents_using_it(self) -> None:
         empresa_id = self.empresa_service.create_empresa(

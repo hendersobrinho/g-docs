@@ -13,8 +13,8 @@ from documentos_empresa_app.ui.documento_tab import DocumentoTab
 from documentos_empresa_app.ui.empresa_tab import EmpresaTab
 from documentos_empresa_app.ui.log_tab import LogTab
 from documentos_empresa_app.ui.panorama_tab import PanoramaTab
-from documentos_empresa_app.ui.periodo_tab import PeriodoTab
 from documentos_empresa_app.ui.user_tab import UserTab
+from documentos_empresa_app.ui.styles import configure_app_style
 from documentos_empresa_app.utils.auto_backup import (
     load_auto_backup_settings,
     mark_auto_backup_created,
@@ -43,11 +43,7 @@ class MainWindow(tk.Tk):
         self.after(800, self.run_auto_backup_if_due)
 
     def _configure_style(self) -> None:
-        style = ttk.Style(self)
-        if "clam" in style.theme_names():
-            style.theme_use("clam")
-        style.configure("TNotebook.Tab", padding=(14, 8))
-        style.configure("Header.TLabel", font=("TkDefaultFont", 10, "bold"))
+        configure_app_style(self)
 
     def _configure_window_geometry(self) -> None:
         default_width = 1440
@@ -92,14 +88,14 @@ class MainWindow(tk.Tk):
         header_right = ttk.Frame(header)
         header_right.pack(side="right")
 
-        ttk.Button(header_right, text="Logout", command=self.logout).pack(side="right")
-        self.help_menu_button = ttk.Menubutton(header_right, text="Ajuda")
+        ttk.Button(header_right, text="Logout", command=self.logout, style="Danger.TButton").pack(side="right")
+        self.help_menu_button = ttk.Menubutton(header_right, text="Ajuda", style="Secondary.TMenubutton")
         self.help_menu = tk.Menu(self.help_menu_button, tearoff=False)
         self.help_menu.add_command(label="Sobre...", command=self.show_about)
         self.help_menu_button["menu"] = self.help_menu
         self.help_menu_button.pack(side="right", padx=(0, 8))
 
-        self.database_menu_button = ttk.Menubutton(header_right, text="Banco")
+        self.database_menu_button = ttk.Menubutton(header_right, text="Banco", style="Secondary.TMenubutton")
         self.database_menu = tk.Menu(self.database_menu_button, tearoff=False)
         self.database_menu.add_command(label="Fazer backup...", command=self.backup_database)
         self.database_menu.add_command(label="Configurar backup automatico...", command=self.configure_auto_backup)
@@ -130,7 +126,6 @@ class MainWindow(tk.Tk):
             self.controle_tab,
             EmpresaTab(self.notebook, self.services, self.refresh_all_tabs),
             DocumentoTab(self.notebook, self.services, self.refresh_all_tabs),
-            PeriodoTab(self.notebook, self.services, self.refresh_all_tabs),
         ]
 
         tab_titles = [
@@ -138,7 +133,6 @@ class MainWindow(tk.Tk):
             "Controle",
             "Empresas",
             "Documentos",
-            "Periodos",
         ]
 
         if self.services.session_service.is_admin():

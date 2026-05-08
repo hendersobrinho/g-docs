@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from documentos_empresa_app.app_context import ApplicationServices
+from documentos_empresa_app.ui.styles import configure_app_style
 from documentos_empresa_app.utils.common import APP_NAME
 from documentos_empresa_app.utils.display import get_preferred_screen_bounds
 from documentos_empresa_app.utils.helpers import ValidationError, load_login_preferences, save_login_preferences
@@ -30,9 +31,7 @@ class LoginWindow(tk.Tk):
         self._build_layout()
 
     def _configure_style(self) -> None:
-        style = ttk.Style(self)
-        if "clam" in style.theme_names():
-            style.theme_use("clam")
+        configure_app_style(self)
 
     def _configure_geometry(self) -> None:
         width = 420
@@ -54,7 +53,7 @@ class LoginWindow(tk.Tk):
         ttk.Label(
             container,
             text="Informe nome de usuario e senha para entrar no sistema.",
-            foreground="#4F4F4F",
+            style="Subtle.TLabel",
         ).pack(anchor="w", pady=(4, 12))
 
         form = ttk.Frame(container)
@@ -77,8 +76,8 @@ class LoginWindow(tk.Tk):
 
         actions = ttk.Frame(container)
         actions.pack(fill="x")
-        ttk.Button(actions, text="Entrar", command=self.login).pack(side="right")
-        ttk.Button(actions, text="Sair", command=self.close).pack(side="right", padx=(0, 8))
+        ttk.Button(actions, text="Entrar", command=self.login, style="Primary.TButton").pack(side="right")
+        ttk.Button(actions, text="Sair", command=self.close, style="Quiet.TButton").pack(side="right", padx=(0, 8))
 
         self._load_saved_preferences()
         if self.username_var.get():

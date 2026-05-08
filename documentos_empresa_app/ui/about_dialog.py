@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from documentos_empresa_app import __version__
+from documentos_empresa_app.ui.styles import configure_app_style
 from documentos_empresa_app.utils.common import APP_NAME
 from documentos_empresa_app.utils.resources import apply_window_icon, iter_icon_candidates
 
@@ -24,6 +25,7 @@ class AboutDialog(tk.Toplevel):
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         apply_window_icon(self)
+        configure_app_style(self)
 
         self._build_layout()
         self.grab_set()
@@ -45,7 +47,7 @@ class AboutDialog(tk.Toplevel):
         title_block = ttk.Frame(header)
         title_block.pack(side="left", fill="x", expand=True)
         ttk.Label(title_block, text=APP_NAME, font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
-        ttk.Label(title_block, text=f"Versao {__version__}", foreground="#4F4F4F").pack(anchor="w", pady=(2, 0))
+        ttk.Label(title_block, text=f"Versao {__version__}", style="Subtle.TLabel").pack(anchor="w", pady=(2, 0))
 
         body = ttk.Frame(container)
         body.pack(fill="x", pady=(16, 0))
@@ -69,8 +71,8 @@ class AboutDialog(tk.Toplevel):
 
         button_row = ttk.Frame(container)
         button_row.pack(fill="x", pady=(18, 0))
-        ttk.Button(button_row, text="Copiar email", command=self._copy_email).pack(side="left")
-        ttk.Button(button_row, text="Fechar", command=self.destroy).pack(side="right")
+        ttk.Button(button_row, text="Copiar email", command=self._copy_email, style="Secondary.TButton").pack(side="left")
+        ttk.Button(button_row, text="Fechar", command=self.destroy, style="Quiet.TButton").pack(side="right")
 
     def _copy_email(self) -> None:
         self.clipboard_clear()

@@ -55,6 +55,14 @@ SCHEMA_STATEMENTS = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS configuracoes_cobranca (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        inicio_cobranca_dia INTEGER NOT NULL CHECK (inicio_cobranca_dia BETWEEN 1 AND 31),
+        encerramento_cobranca_dia INTEGER NOT NULL CHECK (encerramento_cobranca_dia BETWEEN 1 AND 31),
+        alerta_apos_dias INTEGER NOT NULL CHECK (alerta_apos_dias >= 0)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS nomes_documento_padrao_sistema (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tipo_documento_id INTEGER NOT NULL,
@@ -160,6 +168,7 @@ def initialize_schema(db_manager: DatabaseManager) -> None:
             connection.execute(statement)
 
         ensure_empresa_extra_columns(connection)
+        ensure_empresa_collection_columns(connection)
         ensure_tipo_extra_columns(connection)
         ensure_documento_extra_columns(connection)
         ensure_empresa_observacao_constraints(connection)
@@ -192,6 +201,19 @@ def initialize_schema(db_manager: DatabaseManager) -> None:
                 (method,),
             )
 
+        connection.execute(
+            """
+            INSERT INTO configuracoes_cobranca (
+                id,
+                inicio_cobranca_dia,
+                encerramento_cobranca_dia,
+                alerta_apos_dias
+            )
+            VALUES (1, 5, 12, 4)
+            ON CONFLICT(id) DO NOTHING
+            """
+        )
+
         ensure_default_admin(connection)
         consolidate_duplicate_types(connection)
 
@@ -207,6 +229,22 @@ def ensure_empresa_extra_columns(connection) -> None:
         "nome_contato": "TEXT NULL",
         "observacao": f"TEXT NULL CHECK (observacao IS NULL OR length(observacao) <= {MAX_COMPANY_OBSERVATION_LENGTH})",
         "diretorio_documentos": "TEXT NULL",
+    }
+    for column_name, column_definition in required_columns.items():
+        if column_name in columns:
+            continue
+        connection.execute(f"ALTER TABLE empresas ADD COLUMN {column_name} {column_definition}")
+
+
+def ensure_empresa_collection_columns(connection) -> None:
+    columns = {
+        row["name"]: row
+        for row in connection.execute("PRAGMA table_info(empresas)").fetchall()
+    }
+    required_columns = {
+        "cobranca_inicio_dia": "INTEGER NULL CHECK (cobranca_inicio_dia BETWEEN 1 AND 31)",
+        "cobranca_fim_dia": "INTEGER NULL CHECK (cobranca_fim_dia BETWEEN 1 AND 31)",
+        "cobranca_alerta_dias": "INTEGER NULL CHECK (cobranca_alerta_dias >= 0)",
     }
     for column_name, column_definition in required_columns.items():
         if column_name in columns:

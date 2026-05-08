@@ -48,7 +48,11 @@ def ensure_local_license() -> bool:
     license_root = tk.Tk()
     license_root.withdraw()
     try:
-        license_service = LicenseService()
+        try:
+            license_service = LicenseService()
+        except LicenseError as exc:
+            messagebox.showerror(APP_NAME, str(exc), parent=license_root)
+            return False
         try:
             license_service.load_and_save_if_valid()
             return True

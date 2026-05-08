@@ -44,6 +44,7 @@ pip-wheel-metadata/
 .venv/
 .env
 .env.*
+documentos_empresa_app/_private/
 license.json
 *.license.json
 *.key
@@ -66,6 +67,7 @@ license.json
 
 modelo_importacao_*.xlsx
 relatorio_*.xlsx
+relatorio_*.pdf
 
 .DS_Store
 Thumbs.db

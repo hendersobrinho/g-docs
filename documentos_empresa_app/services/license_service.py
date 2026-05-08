@@ -9,21 +9,33 @@ from typing import Any
 
 from documentos_empresa_app.utils.common import CONFIG_DIR
 
-DEFAULT_DEVELOPMENT_LICENSE_SECRET = "docflow-pilot-internal-license-secret-v1"
+try:
+    from documentos_empresa_app._private.license_secret import LICENSE_SECRET as PRIVATE_LICENSE_SECRET
+except ImportError:
+    PRIVATE_LICENSE_SECRET = None
+
+
+PUBLIC_PORTFOLIO_LICENSE_MESSAGE = (
+    "A edicao publica do DocFLow nao inclui a chave privada de licenciamento. "
+    "Este repositorio foi publicado apenas para portfolio e estudo."
+)
 
 
 class LicenseError(Exception):
     """Erro de validacao de licenca."""
 
 
+def resolve_license_secret(secret_key: str | bytes | None = None) -> bytes:
+    resolved_secret = secret_key if secret_key is not None else PRIVATE_LICENSE_SECRET
+    secret_value = resolved_secret.encode("utf-8") if isinstance(resolved_secret, str) else resolved_secret
+    if not secret_value:
+        raise LicenseError(PUBLIC_PORTFOLIO_LICENSE_MESSAGE)
+    return secret_value
+
+
 class LicenseService:
     def __init__(self, secret_key: str | bytes | None = None, config_dir: Path = CONFIG_DIR) -> None:
-        resolved_secret = secret_key if secret_key is not None else DEFAULT_DEVELOPMENT_LICENSE_SECRET
-        secret_value = resolved_secret.encode("utf-8") if isinstance(resolved_secret, str) else resolved_secret
-        if not secret_value:
-            raise LicenseError("A chave secreta da licenca nao foi configurada.")
-
-        self._secret_key = secret_value
+        self._secret_key = resolve_license_secret(secret_key)
         self._config_dir = Path(config_dir).expanduser()
         self._license_file = self._config_dir / "license.json"
 

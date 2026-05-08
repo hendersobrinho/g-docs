@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from documentos_empresa_app.ui.styles import configure_app_style
 from documentos_empresa_app.utils.common import ValidationError
 
 
@@ -30,6 +31,7 @@ class DocumentNameManagerDialog(tk.Toplevel):
         self.transient(parent.winfo_toplevel())
         self.resizable(True, True)
         self.minsize(520, 340)
+        configure_app_style(self)
 
         self._build_layout()
         self.refresh_type_options()
@@ -88,10 +90,10 @@ class DocumentNameManagerDialog(tk.Toplevel):
         entry.grid(row=1, column=1, sticky="ew", pady=(0, 8))
         entry.bind("<Return>", self.save_name)
 
-        self.save_button = ttk.Button(editor, text="Adicionar", command=self.save_name)
+        self.save_button = ttk.Button(editor, text="Adicionar", command=self.save_name, style="Primary.TButton")
         self.save_button.grid(row=2, column=0, sticky="ew", padx=(0, 8))
-        ttk.Button(editor, text="Limpar", command=self.clear_selection).grid(row=2, column=1, sticky="ew")
-        ttk.Button(editor, text="Excluir do sistema", command=self.delete_selected_name).grid(
+        ttk.Button(editor, text="Limpar", command=self.clear_selection, style="Quiet.TButton").grid(row=2, column=1, sticky="ew")
+        ttk.Button(editor, text="Excluir do sistema", command=self.delete_selected_name, style="Danger.TButton").grid(
             row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0)
         )
 

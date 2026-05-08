@@ -95,12 +95,13 @@ class ControleTab(ttk.Frame):
 
         action_frame = ttk.Frame(period_frame)
         action_frame.grid(row=1, column=4, columnspan=3, sticky="w")
-        ttk.Button(action_frame, text="Consultar", command=self.consult).pack(side="left")
-        ttk.Button(action_frame, text="Limpar filtros", command=self.clear_filters).pack(side="left", padx=(6, 0))
+        ttk.Button(action_frame, text="Consultar", command=self.consult, style="Primary.TButton").pack(side="left")
+        ttk.Button(action_frame, text="Limpar filtros", command=self.clear_filters, style="Quiet.TButton").pack(side="left", padx=(6, 0))
         self.directory_button = ttk.Button(
             action_frame,
             text="Abrir pasta...",
             command=self.open_company_directory_browser,
+            style="Secondary.TButton",
         )
         self.directory_button.pack(side="left", padx=(6, 0))
         ttk.Label(period_frame, text="Limite maximo de 12 meses por consulta.").grid(
@@ -121,6 +122,7 @@ class ControleTab(ttk.Frame):
             text="Selecao em lote",
             command=self.toggle_bulk_selection_mode,
             state="disabled",
+            style="Secondary.TButton",
         )
         self.bulk_mode_button.pack(side="right")
 
@@ -153,12 +155,14 @@ class ControleTab(ttk.Frame):
             self.bulk_panel,
             text="Marcar todos",
             command=self.select_all_documents_in_bulk,
+            style="Secondary.TButton",
         )
         self.bulk_select_all_button.grid(row=0, column=1, sticky="w", padx=(0, 6), pady=(0, 6))
         self.bulk_clear_button = ttk.Button(
             self.bulk_panel,
             text="Limpar selecao",
             command=self.clear_bulk_selection,
+            style="Quiet.TButton",
         )
         self.bulk_clear_button.grid(row=0, column=2, sticky="w", pady=(0, 6))
         ttk.Label(self.bulk_panel, text="Periodo").grid(row=1, column=0, sticky="w", padx=(0, 6))
@@ -182,6 +186,7 @@ class ControleTab(ttk.Frame):
             self.bulk_panel,
             text="Aplicar nos selecionados",
             command=self.apply_bulk_status,
+            style="Primary.TButton",
         )
         self.bulk_apply_button.grid(row=1, column=4, sticky="w")
         self.scrollable = ScrollableFrame(self.result_frame)

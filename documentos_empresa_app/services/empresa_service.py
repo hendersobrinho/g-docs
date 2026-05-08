@@ -58,7 +58,17 @@ class EmpresaService:
             with self.empresa_repository.db_manager.connect():
                 if self.empresa_repository.get_by_code(codigo):
                     raise ValidationError("Ja existe uma empresa cadastrada com esse codigo.")
-                empresa_id = self.empresa_repository.create(codigo, nome, None, email, contato, obs)
+                empresa_id = self.empresa_repository.create(
+                    codigo,
+                    nome,
+                    None,
+                    email,
+                    contato,
+                    obs,
+                    None,
+                    None,
+                    None,
+                )
                 self._log(
                     "CADASTRO_EMPRESA",
                     "empresa",
@@ -97,7 +107,17 @@ class EmpresaService:
         try:
             with self.empresa_repository.db_manager.connect():
                 empresa = self.get_empresa(empresa_id)
-                self.empresa_repository.update_details(empresa_id, nome, None, email, contato, obs)
+                self.empresa_repository.update_details(
+                    empresa_id,
+                    nome,
+                    None,
+                    email,
+                    contato,
+                    obs,
+                    empresa.get("cobranca_inicio_dia"),
+                    empresa.get("cobranca_fim_dia"),
+                    empresa.get("cobranca_alerta_dias"),
+                )
 
                 changes = []
                 if empresa["nome_empresa"] != nome:

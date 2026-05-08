@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import hmac
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -13,11 +12,10 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from documentos_empresa_app.services.license_service import DEFAULT_DEVELOPMENT_LICENSE_SECRET
+from documentos_empresa_app.services.license_service import LicenseError, resolve_license_secret
 
 OUTPUT_FILE = ROOT_DIR / "dist_license" / "license.json"
 DEFAULT_NOTES = "Licenca vitalicia para uso interno/piloto."
-ENV_SECRET_KEY = "DOCFLOW_LICENSE_SECRET"
 
 
 def build_signature(payload: dict, secret_key: str) -> str:
@@ -51,14 +49,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--customer", required=True, help="Nome do cliente/empresa.")
     parser.add_argument("--email", required=True, help="Email principal.")
     parser.add_argument("--notes", default=DEFAULT_NOTES, help="Observacoes da licenca.")
-    parser.add_argument(
-        "--secret",
-        default=(os.environ.get(ENV_SECRET_KEY) or DEFAULT_DEVELOPMENT_LICENSE_SECRET),
-        help=(
-            f"Chave secreta para assinatura. Se omitida, usa {ENV_SECRET_KEY} quando existir, "
-            "senao usa a chave interna de desenvolvimento."
-        ),
-    )
     return parser.parse_args()
 
 
@@ -67,12 +57,16 @@ def main() -> int:
     customer = str(args.customer).strip()
     email = str(args.email).strip()
     notes = str(args.notes).strip()
-    secret = str(args.secret).strip()
 
     if not customer:
         raise SystemExit("Erro: informe --customer.")
     if not email:
         raise SystemExit("Erro: informe --email.")
+    try:
+        secret = resolve_license_secret().decode("utf-8")
+    except LicenseError as exc:
+        raise SystemExit(f"Erro: {exc}") from exc
+
     payload = build_payload(customer=customer, email=email, notes=notes)
     license_data = {
         "payload": payload,
